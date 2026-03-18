@@ -4,8 +4,9 @@ import { getScriptState, assignToScriptState } from './script-runtime-bridge.js'
 
 const S = getScriptState();
 function createFolderCard(folder, index) {
-  if (typeof S.createFolderCard === 'function') {
-    return S.createFolderCard(folder, index);
+  const runtimeCreateFolderCard = S.createFolderCard;
+  if (typeof runtimeCreateFolderCard === 'function' && runtimeCreateFolderCard !== createFolderCard) {
+    return runtimeCreateFolderCard(folder, index);
   }
 
   const card = document.createElement('div');
@@ -130,7 +131,11 @@ function createBookmarkCard(bookmark, index) {
     event.preventDefault();
     event.stopPropagation(); // 阻止事件冒泡，防止触发文档级的contextmenu事件监听器
     console.log('Bookmark context menu triggered:', bookmark);
-    S.showContextMenu(event, bookmark, 'bookmark'); // 明确指定类型为 'bookmark'
+    if (typeof S.showContextMenu === 'function') {
+      S.showContextMenu(event, bookmark, 'bookmark'); // 明确指定类型为 'bookmark'
+    } else {
+      console.warn('showContextMenu is not available');
+    }
   });
 
   // 添加鼠标悬停效果

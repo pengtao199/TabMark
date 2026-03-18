@@ -168,7 +168,9 @@ document.addEventListener('DOMContentLoaded', function () {
       
       // 确保文件夹上下文菜单存在
       if (!S.bookmarkFolderContextMenu) {
-        S.bookmarkFolderContextMenu = S.createBookmarkFolderContextMenu();
+        if (typeof S.createBookmarkFolderContextMenu === 'function') {
+          S.bookmarkFolderContextMenu = S.createBookmarkFolderContextMenu();
+        }
       }
 
       if (!S.bookmarkFolderContextMenu) {
@@ -181,7 +183,9 @@ document.addEventListener('DOMContentLoaded', function () {
       S.currentBookmarkFolder = targetFolder;
       
       // 重新创建菜单项
-      await S.createMenuItems(S.bookmarkFolderContextMenu);
+      if (typeof S.createMenuItems === 'function') {
+        await S.createMenuItems(S.bookmarkFolderContextMenu);
+      }
       
       // 先显示菜单但设为不可见，以便获取其尺寸
       S.bookmarkFolderContextMenu.style.display = 'block';

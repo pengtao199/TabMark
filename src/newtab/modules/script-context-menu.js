@@ -4,8 +4,59 @@ import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-a
 import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
 
 const S = getScriptState();
-const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
+const getLocalizedMessage = (...args) => (
+  typeof S.getLocalizedMessage === 'function' ? S.getLocalizedMessage(...args) : (args[0] || '')
+);
 const Utilities = createUtilities(getLocalizedMessage);
+let contextMenu = null;
+let currentBookmark = null;
+let itemToDelete = null;
+
+function stripHtml(input = '') {
+  return String(input).replace(/<[^>]*>/g, '');
+}
+
+function showConfirmDialog(message, callback) {
+  if (typeof S.showConfirmDialog === 'function') {
+    S.showConfirmDialog(message, callback);
+    return;
+  }
+  if (window.confirm(stripHtml(message)) && typeof callback === 'function') {
+    callback();
+  }
+}
+
+function deleteBookmark(bookmarkId, bookmarkTitle) {
+  if (typeof S.deleteBookmark === 'function') {
+    S.deleteBookmark(bookmarkId, bookmarkTitle);
+    return;
+  }
+  if (!bookmarkId) {
+    return;
+  }
+  chrome.bookmarks.remove(bookmarkId, () => {
+    if (!chrome.runtime.lastError && typeof S.updateBookmarksDisplay === 'function') {
+      const parentId = document.getElementById('bookmarks-list')?.dataset?.parentId || '1';
+      S.updateBookmarksDisplay(parentId);
+    }
+  });
+}
+
+function deleteQuickLink(item) {
+  if (typeof S.deleteQuickLink === 'function') {
+    S.deleteQuickLink(item);
+    return;
+  }
+  console.warn('deleteQuickLink is not available');
+}
+
+function openEditDialog(item) {
+  if (typeof S.openEditDialog === 'function') {
+    S.openEditDialog(item);
+    return;
+  }
+  console.warn('openEditDialog is not available');
+}
 
 function createContextMenu() {
   console.log('Creating context menu');
@@ -18,6 +69,8 @@ function createContextMenu() {
   const menu = document.createElement('div');
   menu.className = 'custom-context-menu';
   document.body.appendChild(menu);
+  contextMenu = menu;
+  S.contextMenu = menu;
 
   createContextMenuItems(menu, S.currentBookmark?.type || 'bookmark');
   return menu;
@@ -35,6 +88,7 @@ function showContextMenu(event, item, type = 'bookmark') {
   if (!contextMenu) {
     contextMenu = createContextMenu();
   }
+  S.contextMenu = contextMenu;
 
   if (!contextMenu) {
     console.error('Failed to create context menu');
@@ -44,6 +98,8 @@ function showContextMenu(event, item, type = 'bookmark') {
   // 清除之前的状态
   itemToDelete = null;
   currentBookmark = null;
+  S.itemToDelete = null;
+  S.currentBookmark = null;
   
   // 设置当前项目，确保包含类型信息
   currentBookmark = {
@@ -52,6 +108,7 @@ function showContextMenu(event, item, type = 'bookmark') {
     url: item.url || item.dataset?.url,
     type: item.type || type  // 优先使用项目自带的类型，否则使用传入的类型
   };
+  S.currentBookmark = currentBookmark;
 
   // 先显示菜单但设为不可见，以便获取其尺寸
   contextMenu.style.display = 'block';
@@ -91,6 +148,38 @@ function showContextMenu(event, item, type = 'bookmark') {
     contextMenu.style.visibility = 'visible';
   }, 0);
 }
+
+function hideContextMenu() {
+  if (!contextMenu) {
+    return;
+  }
+  contextMenu.style.display = 'none';
+  currentBookmark = null;
+  itemToDelete = null;
+  S.currentBookmark = null;
+  S.itemToDelete = null;
+}
+
+// 右键菜单的兜底关闭机制：点击空白区域时一定关闭
+document.addEventListener('click', (event) => {
+  if (!contextMenu) {
+    return;
+  }
+  if (contextMenu.contains(event.target)) {
+    return;
+  }
+  hideContextMenu();
+});
+
+document.addEventListener('contextmenu', (event) => {
+  if (!contextMenu) {
+    return;
+  }
+  if (event.target.closest('.bookmark-card') || event.target.closest('.quick-link-item-container')) {
+    return;
+  }
+  hideContextMenu();
+});
 
 
 

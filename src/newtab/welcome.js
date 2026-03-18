@@ -13,6 +13,8 @@ const WelcomeManager = {
         chrome.storage.sync.get(['showWelcomeMessage'], (result) => {
             const welcomeElement = document.getElementById('welcome-message');
             if (welcomeElement) {
+                // 页面初始写了 visibility:hidden，这里统一恢复可见性
+                welcomeElement.style.visibility = 'visible';
                 // 立即设置显示状态，避免闪烁
                 welcomeElement.style.display = result.showWelcomeMessage !== false ? '' : 'none';
                 
@@ -51,6 +53,7 @@ const WelcomeManager = {
             // 只有在需要时才检查显示状态
             if (checkVisibility) {
                 chrome.storage.sync.get(['showWelcomeMessage'], (result) => {
+                    welcomeElement.style.visibility = 'visible';
                     welcomeElement.style.display = result.showWelcomeMessage !== false ? '' : 'none';
                 });
             }

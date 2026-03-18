@@ -1,7 +1,7 @@
 import { openSettingsModal } from '../ui-helpers.js';
 
 export function setupSpecialLinks() {
-  const specialLinks = document.querySelectorAll('.links-icons a, .settings-icon a');
+  const specialLinks = document.querySelectorAll('.links-icons a');
   let isProcessingClick = false;
 
   specialLinks.forEach(link => {
@@ -52,4 +52,19 @@ export function setupSpecialLinks() {
       }
     });
   });
+}
+
+let initialized = false;
+function initSpecialLinksOnce() {
+  if (initialized) {
+    return;
+  }
+  initialized = true;
+  setupSpecialLinks();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSpecialLinksOnce, { once: true });
+} else {
+  initSpecialLinksOnce();
 }

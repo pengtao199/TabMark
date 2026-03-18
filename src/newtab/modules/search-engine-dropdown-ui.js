@@ -505,3 +505,18 @@ export {
   getSearchUrl,
   createTemporarySearchTabs
 };
+
+let searchEngineDropdownInitialized = false;
+function initSearchEngineDropdownOnce() {
+  if (searchEngineDropdownInitialized) {
+    return;
+  }
+  searchEngineDropdownInitialized = true;
+  createSearchEngineDropdown();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSearchEngineDropdownOnce, { once: true });
+} else {
+  initSearchEngineDropdownOnce();
+}
