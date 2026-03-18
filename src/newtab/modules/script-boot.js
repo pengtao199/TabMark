@@ -3,14 +3,18 @@ import {
   createTemporarySearchTabs,
   setVersionNumber,
   updateDefaultFoldersTabsVisibility,
-  openSettingsModal,
   initScrollIndicator,
   onDomReadyOnce
 } from './script-shared-init.js';
+import { getScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
 
 onDomReadyOnce('script-boot:startup', function() {
   createSearchEngineDropdown();
-  initDefaultFoldersTabs();
+  if (typeof S.initDefaultFoldersTabs === 'function') {
+    S.initDefaultFoldersTabs();
+  }
   setTimeout(setVersionNumber, 100);
 
   const searchEngineIcon = document.getElementById('search-engine-icon');
@@ -26,66 +30,39 @@ onDomReadyOnce('script-boot:startup', function() {
 
   updateDefaultFoldersTabsVisibility();
 
-  const settingsIcon = document.querySelector('.settings-icon a');
-  if (settingsIcon) {
-    settingsIcon.addEventListener('click', function(e) {
-      e.preventDefault();
-      openSettingsModal();
-    });
+  if (typeof S.initVirtualScroll === 'function') {
+    S.initVirtualScroll();
   }
-
-  const closeButton = document.querySelector('.settings-sidebar-close');
-  if (closeButton) {
-    closeButton.addEventListener('click', function() {
-      const settingsSidebar = document.getElementById('settings-sidebar');
-      const settingsOverlay = document.getElementById('settings-overlay');
-
-      settingsSidebar.classList.remove('open');
-      settingsOverlay.classList.remove('open');
-      document.body.style.overflow = '';
-    });
-  }
-
-  const settingsOverlay = document.getElementById('settings-overlay');
-  if (settingsOverlay) {
-    settingsOverlay.addEventListener('click', function() {
-      const settingsSidebar = document.getElementById('settings-sidebar');
-
-      settingsSidebar.classList.remove('open');
-      settingsOverlay.classList.remove('open');
-      document.body.style.overflow = '';
-    });
-  }
-
-  initVirtualScroll();
   initScrollIndicator();
-  startPeriodicSync();
+  if (typeof S.startPeriodicSync === 'function') {
+    S.startPeriodicSync();
+  }
 });
 
 // 修改文档点击监听器，同时处理书签和文件夹的上下文菜单
 document.addEventListener('click', function (event) {
   // 关闭书签上下文菜单
-  if (contextMenu) {
-    contextMenu.style.display = 'none';
-    currentBookmark = null;
+  if (S.contextMenu) {
+    S.contextMenu.style.display = 'none';
+    S.currentBookmark = null;
   }
 
   // 关闭文件夹上下文菜单
-  if (bookmarkFolderContextMenu) {
-    bookmarkFolderContextMenu.style.display = 'none';
-    currentBookmarkFolder = null;
+  if (S.bookmarkFolderContextMenu) {
+    S.bookmarkFolderContextMenu.style.display = 'none';
+    S.currentBookmarkFolder = null;
   }
 });
 
 // 为上下文菜单添加阻止冒泡，防止点击菜单本身时关闭
-if (contextMenu) {
-  contextMenu.addEventListener('click', function(event) {
+if (S.contextMenu) {
+  S.contextMenu.addEventListener('click', function(event) {
     event.stopPropagation();
   });
 }
 
-if (bookmarkFolderContextMenu) {
-  bookmarkFolderContextMenu.addEventListener('click', function(event) {
+if (S.bookmarkFolderContextMenu) {
+  S.bookmarkFolderContextMenu.addEventListener('click', function(event) {
     event.stopPropagation();
   });
 }
@@ -179,11 +156,15 @@ async function toggleDefaultFolder(folder) {
       });
 
       // 立即更新UI
-      await initDefaultFoldersTabs();
+      if (typeof S.initDefaultFoldersTabs === 'function') {
+        await S.initDefaultFoldersTabs();
+      }
 
       // 如果是新添加的默认文件夹，自动切换到该文件夹
       if (!isDefault) {
-          await switchToFolder(folderId);
+          if (typeof S.switchToFolder === 'function') {
+            await S.switchToFolder(folderId);
+          }
       }
 
       // 触发更新事件
@@ -202,9 +183,9 @@ async function toggleDefaultFolder(folder) {
 
 
 // 监听默认文件夹变化
-document.addEventListener('defaultFoldersChanged', async (event) => {
-  await initDefaultFoldersTabs();
+document.addEventListener('defaultFoldersChanged', async () => {
+  if (typeof S.initDefaultFoldersTabs === 'function') {
+    await S.initDefaultFoldersTabs();
+  }
+  updateDefaultFoldersTabsVisibility();
 });
-
-// 在标签更新时调用
-document.addEventListener('defaultFoldersChanged', updateDefaultFoldersTabsVisibility);

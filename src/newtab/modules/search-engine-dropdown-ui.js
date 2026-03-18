@@ -4,8 +4,20 @@ import { updateSearchEngineIcon } from './search-engine-dropdown-icons.js';
 import {
   initCustomEngineForm,
   refreshCustomEngines,
-  setSearchEngineDropdownRefresher
+  setSearchEngineDropdownRefresher,
+  bindEngineToggleHandlers
 } from './search-engine-dropdown-custom.js';
+
+let activeDropdownContainer = null,
+  hasGlobalDropdownCloseListener = false,
+  pendingDropdownInitOnDomReady = false;
+const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
+const getLocalizedMessage = (key) => {
+  if (typeof S.getLocalizedMessage === 'function') {
+    return S.getLocalizedMessage(key);
+  }
+  return chrome.i18n.getMessage(key) || key;
+};
 
 // 创建搜索引擎选项
 function createSearchEngineOption(engine, isAddButton = false) {
@@ -242,11 +254,14 @@ function createSearchEngineDropdown() {
   console.log('[Search] Creating dropdown menu');
   
   if (document.readyState === 'loading') {
+    if (pendingDropdownInitOnDomReady) return;
+    pendingDropdownInitOnDomReady = true;
     document.addEventListener('DOMContentLoaded', () => {
+      pendingDropdownInitOnDomReady = false;
       initializeSearchEngine();
       createDropdownUI();
       createTemporarySearchTabs();
-    });
+    }, { once: true });
   } else {
     initializeSearchEngine();
     createDropdownUI();
@@ -264,6 +279,7 @@ function createDropdownUI() {
   
   const searchForm = document.querySelector('.search-form');
   const iconContainer = document.querySelector('.search-icon-container');
+  if (!searchForm || !iconContainer) return;
   const dropdownContainer = document.createElement('div');
   dropdownContainer.className = 'search-engine-dropdown';
   dropdownContainer.style.display = 'none';
@@ -285,17 +301,28 @@ function createDropdownUI() {
   const addOption = createSearchEngineOption(null, true);
   optionsContainer.appendChild(addOption);
 
-  // 添加事件监听器
-  iconContainer.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isVisible = dropdownContainer.style.display === 'block';
-    dropdownContainer.style.display = isVisible ? 'none' : 'block';
-  });
+  activeDropdownContainer = dropdownContainer;
 
-  // 点击其他区域时关闭下拉菜单
-  document.addEventListener('click', () => {
-    dropdownContainer.style.display = 'none';
-  });
+  // 添加事件监听器（只绑定一次，避免重复绑定）
+  if (!iconContainer.dataset.dropdownBound) {
+    iconContainer.dataset.dropdownBound = '1';
+    iconContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!activeDropdownContainer) return;
+      const isVisible = activeDropdownContainer.style.display === 'block';
+      activeDropdownContainer.style.display = isVisible ? 'none' : 'block';
+    });
+  }
+
+  // 点击其他区域时关闭下拉菜单（全局只绑定一次）
+  if (!hasGlobalDropdownCloseListener) {
+    hasGlobalDropdownCloseListener = true;
+    document.addEventListener('click', () => {
+      if (activeDropdownContainer) {
+        activeDropdownContainer.style.display = 'none';
+      }
+    });
+  }
 
   dropdownContainer.appendChild(optionsContainer);
   searchForm.appendChild(dropdownContainer);
@@ -393,35 +420,11 @@ function createSearchEnginesList() {
     engineItem.appendChild(checkboxContainer);
     engineItem.appendChild(engineInfo);
 
-    // 简化事件处理逻辑
-    const toggleEngine = (e) => {
-      // 获取实际的复选框元素
-      const checkbox = e.currentTarget.querySelector('input[type="checkbox"]');
-      
-      // 排除删除按钮和复选框本身的点击
-      if (e.target.closest('.delete-custom-engine') || e.target === checkbox) {
-        return;
-      }
-
-      // 切换复选框状态
-      checkbox.checked = !checkbox.checked;
-      
-      // 触发change事件以同步状态
-      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      // 更新样式和状态
-      e.currentTarget.classList.toggle('selected', checkbox.checked);
-      handleEngineToggle(engine, checkbox.checked);
-    };
-
-    // 为整个项目添加点击事件
-    engineItem.addEventListener('click', toggleEngine);
-    
-    // 移除复选框的点击事件阻止
-    checkbox.addEventListener('change', (e) => {
-      // 直接更新状态
-      engineItem.classList.toggle('selected', e.target.checked);
-      handleEngineToggle(engine, e.target.checked);
+    bindEngineToggleHandlers({
+      engineItem,
+      checkbox,
+      engine,
+      onToggle: handleEngineToggle
     });
 
     return engineItem;

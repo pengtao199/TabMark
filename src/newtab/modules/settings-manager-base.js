@@ -34,6 +34,7 @@ class SettingsManager {
     this.showBookmarkSuggestionsCheckbox = document.getElementById('show-bookmark-suggestions');
     this.enableWheelSwitchingCheckbox = document.getElementById('enable-wheel-switching');
     this.openSearchInNewTabCheckbox = document.getElementById('open-search-in-new-tab');
+    globalThis.__tabmarkSettingsManager = this;
     this.init();
   }
 
@@ -106,20 +107,23 @@ class SettingsManager {
 
   initEventListeners() {
     // 打开设置侧边栏
-    this.settingsIcon.addEventListener('click', (e) => {
-      e.preventDefault();
-      this.openSettingsSidebar();
-    });
+    if (this.settingsIcon) {
+      this.settingsIcon.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.openSettingsSidebar();
+      });
+    }
 
     // 关闭设置侧边栏
     if (this.closeButton) {
       this.closeButton.addEventListener('click', () => {
         this.closeSettingsSidebar();
-        
-        // 关闭侧边栏时更新欢迎消息
-        if (window.WelcomeManager) {
-          window.WelcomeManager.updateWelcomeMessage();
-        }
+      });
+    }
+
+    if (this.settingsOverlay) {
+      this.settingsOverlay.addEventListener('click', () => {
+        this.closeSettingsSidebar();
       });
     }
 
@@ -155,32 +159,31 @@ class SettingsManager {
     // 添加点击侧边栏外部关闭功能
     document.addEventListener('click', (e) => {
       // 如果侧边栏已打开，且点击的不是侧边栏内部元素
-      if (this.settingsSidebar && 
+      if (this.settingsSidebar &&
           this.settingsSidebar.classList.contains('open') && 
           !this.settingsSidebar.contains(e.target) && 
-          !this.settingsIcon.contains(e.target)) {
+          !(this.settingsIcon && this.settingsIcon.contains(e.target))) {
         this.closeSettingsSidebar();
-        
-        // 关闭侧边栏时更新欢迎消息
-        if (window.WelcomeManager) {
-          window.WelcomeManager.updateWelcomeMessage();
-        }
       }
     });
     
     // 阻止侧边栏内部点击事件冒泡到文档
-    this.settingsSidebar.addEventListener('click', (e) => {
-      // 如果点击的是链接，不阻止事件冒泡
-      if (e.target.tagName === 'A' || e.target.closest('a')) {
-        return; // 允许链接点击事件正常传播
-      }
-      e.stopPropagation();
-    });
+    if (this.settingsSidebar) {
+      this.settingsSidebar.addEventListener('click', (e) => {
+        // 如果点击的是链接，不阻止事件冒泡
+        if (e.target.tagName === 'A' || e.target.closest('a')) {
+          return; // 允许链接点击事件正常传播
+        }
+        e.stopPropagation();
+      });
+    }
     
     // 阻止设置图标点击事件冒泡到文档
-    this.settingsIcon.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
+    if (this.settingsIcon) {
+      this.settingsIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
   }
 
   // 打开设置侧边栏
@@ -188,12 +191,30 @@ class SettingsManager {
     if (this.settingsSidebar) {
       this.settingsSidebar.classList.add('open');
     }
+
+    if (this.settingsOverlay) {
+      this.settingsOverlay.classList.add('open');
+    }
+
+    document.body.style.overflow = 'hidden';
   }
   
   // 关闭设置侧边栏
   closeSettingsSidebar() {
+    const wasOpen = this.settingsSidebar && this.settingsSidebar.classList.contains('open');
+
     if (this.settingsSidebar) {
       this.settingsSidebar.classList.remove('open');
+    }
+
+    if (this.settingsOverlay) {
+      this.settingsOverlay.classList.remove('open');
+    }
+
+    document.body.style.overflow = '';
+
+    if (wasOpen && window.WelcomeManager) {
+      window.WelcomeManager.updateWelcomeMessage();
     }
   }
 

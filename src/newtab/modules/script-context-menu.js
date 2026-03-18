@@ -1,27 +1,27 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
-import {
-  SearchEngineManager, 
-  updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
-} from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
-import { STORAGE_KEYS } from '../../shared/storage-keys.js';
 import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
 import { showQrCodeModal } from '../qrcode-modal.js';
 import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
+import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
+const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
 const Utilities = createUtilities(getLocalizedMessage);
+
+function createContextMenu() {
+  console.log('Creating context menu');
+
+  const existingMenu = document.querySelector('.custom-context-menu');
+  if (existingMenu) {
+    existingMenu.remove();
+  }
+
+  const menu = document.createElement('div');
+  menu.className = 'custom-context-menu';
+  document.body.appendChild(menu);
+
+  createContextMenuItems(menu, S.currentBookmark?.type || 'bookmark');
+  return menu;
+}
 function showContextMenu(event, item, type = 'bookmark') {
   // 先关闭所有已存在的上下文菜单
   const existingMenus = document.querySelectorAll('.custom-context-menu');
@@ -95,7 +95,7 @@ function showContextMenu(event, item, type = 'bookmark') {
 
 
 // 新增函数：根据类型创建菜单项
-function createContextMenuItems(contextMenu, type) {
+function createContextMenuItems(menu, type) {
   const menuItems = [
     { text: getLocalizedMessage('openInNewTab'), icon: 'open_in_new', action: () => currentBookmark && window.open(currentBookmark.url, '_blank') },
     { text: getLocalizedMessage('openInNewWindow'), icon: 'launch', action: () => currentBookmark && openInNewWindow(currentBookmark.url) },
@@ -176,7 +176,7 @@ function createContextMenuItems(contextMenu, type) {
       if (typeof item.action === 'function') {
         item.action();
       }
-      contextMenu.style.display = 'none';
+      menu.style.display = 'none';
     });
 
     menu.appendChild(menuItem);
@@ -466,4 +466,16 @@ function clearDeleteStates() {
 
 // 修改 showConfirmDialog 函数
 
-Object.assign(S, { showContextMenu, createContextMenuItems, showDeleteConfirmDialog, createQuickLinkCard, closeConfirmDialog, confirmBookmarkDeletion, confirmQuickLinkDeletion, clearDeleteStates, showConfirmDialog, clearAllStates });
+assignToScriptState({
+  createContextMenu,
+  showContextMenu,
+  createContextMenuItems,
+  showDeleteConfirmDialog,
+  createQuickLinkCard,
+  closeConfirmDialog,
+  confirmBookmarkDeletion,
+  confirmQuickLinkDeletion,
+  clearDeleteStates,
+  showConfirmDialog: S.showConfirmDialog,
+  clearAllStates: S.clearAllStates
+});

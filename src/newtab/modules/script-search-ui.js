@@ -471,6 +471,4 @@ const Utilities = createUtilities(getLocalizedMessage);
       console.log('没有启用的搜索引擎');
     }
   }
-});
-
 Object.assign(S, { showSuggestions, loadMoreSuggestions, throttle, createSuggestionElement, formatUrl, getFavicon, fetchFaviconOnline, cacheFavicon, showDefaultSuggestions, hideSuggestions, showLoadingIndicator, hideLoadingIndicator, openAllSearchEngines });

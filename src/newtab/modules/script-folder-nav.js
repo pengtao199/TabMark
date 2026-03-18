@@ -1,27 +1,23 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
-import {
-  SearchEngineManager, 
-  updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
-} from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
 import { STORAGE_KEYS } from '../../shared/storage-keys.js';
-import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
-import { showQrCodeModal } from '../qrcode-modal.js';
-import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
-const Utilities = createUtilities(getLocalizedMessage);
+import { updateDefaultFoldersTabsVisibility } from '../ui-helpers.js';
+import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
+const fallbackBookmarksCache = new Map();
+function getCacheEntry(parentId) {
+  if (S.bookmarksCache?.get) {
+    return S.bookmarksCache.get(parentId);
+  }
+  return fallbackBookmarksCache.get(parentId) || null;
+}
+function setCacheEntry(parentId, bookmarks) {
+  if (S.bookmarksCache?.set) {
+    S.bookmarksCache.set(parentId, bookmarks);
+    return;
+  }
+  fallbackBookmarksCache.set(parentId, { bookmarks, timestamp: Date.now() });
+}
+const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
 async function initDefaultFoldersTabs() {
   const tabsContainer = document.querySelector('.tabs-container');
   const defaultFoldersTabs = document.querySelector('.default-folders-tabs');
@@ -57,8 +53,8 @@ async function initDefaultFoldersTabs() {
 
   // 只调用一次更新书签树
   chrome.bookmarks.getTree(function (nodes) {
-    bookmarkTreeNodes = nodes;
-    displayBookmarkCategories(bookmarkTreeNodes[0].children, 0, null, '1');
+    S.bookmarkTreeNodes = nodes;
+    S.displayBookmarkCategories(S.bookmarkTreeNodes[0].children, 0, null, '1');
   });
 
   // 如果有默认文件夹，激活第一个或上次访问的文件夹
@@ -239,7 +235,7 @@ async function switchToFolder(folderId) {
     await Promise.all([
       updateBookmarksDisplay(folderId),
       updateFolderName(folderId),
-      selectSidebarFolder(folderId)
+      S.selectSidebarFolder(folderId)
     ]);
 
     // 保存最后访问的文件夹
@@ -253,18 +249,18 @@ async function switchToFolder(folderId) {
     // 错误时回退到根目录
     await updateBookmarksDisplay('1');
     updateFolderName('1');
-    selectSidebarFolder('1');
+    S.selectSidebarFolder('1');
   }
 }
 
 function updateBookmarksDisplay(parentId, movedItemId, newIndex) {
   return new Promise((resolve, reject) => {
     // 首先检查缓存
-    const cached = bookmarksCache.get(parentId);
+    const cached = getCacheEntry(parentId);
     if (cached && !movedItemId) {
       // 如果有缓存且不是移动操作，直接使用缓存数据
       console.log('Using cached bookmarks for:', parentId);
-      displayBookmarks({ id: parentId, children: cached.bookmarks });
+      S.displayBookmarks({ id: parentId, children: cached.bookmarks });
       resolve();
       return;
     }
@@ -280,13 +276,13 @@ function updateBookmarksDisplay(parentId, movedItemId, newIndex) {
       const bookmarksContainer = document.querySelector('.bookmarks-container');
 
       // 更新缓存
-      bookmarksCache.set(parentId, bookmarks);
+      setCacheEntry(parentId, bookmarks);
 
       // 显示书签
-      displayBookmarks({ id: parentId, children: bookmarks });
+      S.displayBookmarks({ id: parentId, children: bookmarks });
 
-      if (movedItemId) {
-        highlightBookmark(movedItemId);
+      if (movedItemId && typeof S.highlightBookmark === 'function') {
+        S.highlightBookmark(movedItemId);
       }
 
       // 更新文件夹名称
@@ -430,5 +426,66 @@ function navigateToPath(path) {
   });
 }
 
+function updateSidebarDefaultBookmarkIndicator() {
+  const defaultBookmarkId = localStorage.getItem('defaultBookmarkId');
+  selectSidebarFolder(defaultBookmarkId);
 
-Object.assign(S, { initDefaultFoldersTabs, initWheelSwitching, switchToFolder, updateBookmarksDisplay, getBookmarksBarName, getBookmarkPath, updateFolderName, addBreadcrumbClickListeners, navigateToPath, updateDefaultBookmarkIndicator, updateSidebarDefaultBookmarkIndicator, selectSidebarFolder });
+  const allCategories = document.querySelectorAll('#categories-list li');
+  allCategories.forEach(category => {
+    const indicator = category.querySelector('.default-indicator');
+    if (indicator) {
+      indicator.remove();
+    }
+    if (category.dataset.id === defaultBookmarkId) {
+      const defaultIndicator = document.createElement('span');
+      defaultIndicator.className = 'default-indicator material-icons';
+      defaultIndicator.textContent = 'star';
+      defaultIndicator.title = getLocalizedMessage('homepage');
+      category.appendChild(defaultIndicator);
+    }
+  });
+}
+
+function updateDefaultBookmarkIndicator() {
+  const defaultBookmarkId = localStorage.getItem('defaultBookmarkId');
+  const allBookmarks = document.querySelectorAll('.bookmark-card, .bookmark-folder');
+  allBookmarks.forEach(bookmark => {
+    const indicator = bookmark.querySelector('.default-indicator');
+    if (indicator) {
+      indicator.remove();
+    }
+    if (bookmark.dataset.id === defaultBookmarkId) {
+      const defaultIndicator = document.createElement('span');
+      defaultIndicator.className = 'default-indicator material-icons';
+      defaultIndicator.textContent = 'star';
+      defaultIndicator.title = getLocalizedMessage('homepage');
+      bookmark.appendChild(defaultIndicator);
+    }
+  });
+}
+
+function selectSidebarFolder(folderId) {
+  const allFolders = document.querySelectorAll('#categories-list li');
+  allFolders.forEach(folder => {
+    folder.classList.remove('bg-emerald-500');
+    if (folder.dataset.id === folderId) {
+      folder.classList.add('bg-emerald-500');
+    }
+  });
+}
+
+
+assignToScriptState({
+  initDefaultFoldersTabs,
+  initWheelSwitching,
+  switchToFolder,
+  updateBookmarksDisplay,
+  getBookmarksBarName,
+  getBookmarkPath,
+  updateFolderName,
+  addBreadcrumbClickListeners,
+  navigateToPath,
+  updateDefaultBookmarkIndicator,
+  updateSidebarDefaultBookmarkIndicator,
+  selectSidebarFolder
+});

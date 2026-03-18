@@ -19,7 +19,7 @@ function setSearchEngineIcon(engineName) {
   
   if (engine) {
     searchEngineIcon.src = engine.icon;
-    searchEngineIcon.alt = `${getLocalizedMessage(engine.label)} Search`;
+    searchEngineIcon.alt = `${engine.label || engine.name || 'Search'} Search`;
   } else {
     // 使用默认图标
     searchEngineIcon.src = '../../images/placeholder-icon.svg';
@@ -32,6 +32,21 @@ function getSearchEngineIconPath(engineName) {
   const allEngines = SearchEngineManager.getAllEngines();
   const engine = allEngines.find(e => e.name === engineName);
   return engine ? engine.icon : '../../images/placeholder-icon.svg';
+}
+
+function initSearchEngineIconOnLoad() {
+  const defaultEngine = SearchEngineManager.getDefaultEngine();
+  if (defaultEngine?.name) {
+    setSearchEngineIcon(defaultEngine.name);
+  } else {
+    setSearchEngineIcon('google');
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSearchEngineIconOnLoad, { once: true });
+} else {
+  initSearchEngineIconOnLoad();
 }
 
 export {

@@ -22,6 +22,7 @@ import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
 const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
 const getLocalizedMessage = S.getLocalizedMessage;
 const Utilities = createUtilities(getLocalizedMessage);
+let bookmarkOrderCache = {};
 function setupSortable() {
   const bookmarksList = document.getElementById('bookmarks-list');
   if (bookmarksList) {
@@ -179,5 +180,14 @@ function updateAffectedBookmarks(parentId, movedItemId, newIndex) {
 }
 
 function highlightBookmark(itemId) {
+  const bookmarkElement = document.querySelector(`[data-id="${itemId}"]`);
+  if (bookmarkElement) {
+    bookmarkElement.style.transition = 'background-color 0.5s ease';
+    bookmarkElement.style.backgroundColor = '#ffff99';
+    setTimeout(() => {
+      bookmarkElement.style.backgroundColor = '';
+    }, 1000);
+  }
+}
 
 Object.assign(S, { setupSortable, moveBookmark, updateAffectedBookmarks, highlightBookmark });

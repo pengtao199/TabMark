@@ -1,27 +1,35 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
-import {
-  SearchEngineManager, 
-  updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
-} from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
-import { STORAGE_KEYS } from '../../shared/storage-keys.js';
-import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
-import { showQrCodeModal } from '../qrcode-modal.js';
-import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
-const Utilities = createUtilities(getLocalizedMessage);
+import { getMainOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
+import { getColors, applyColors } from '../color-utils.js';
+import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
+function createFolderCard(folder, index) {
+  if (typeof S.createFolderCard === 'function') {
+    return S.createFolderCard(folder, index);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'bookmark-folder card';
+  card.dataset.id = folder.id;
+  card.dataset.parentId = folder.parentId;
+  card.dataset.index = index.toString();
+
+  const title = document.createElement('div');
+  title.className = 'card-title';
+  title.textContent = folder.title || '';
+  card.appendChild(title);
+
+  card.addEventListener('click', () => {
+    if (typeof S.updateBookmarksDisplay === 'function') {
+      S.updateBookmarksDisplay(folder.id);
+    }
+    if (typeof S.updateFolderName === 'function') {
+      S.updateFolderName(folder.id);
+    }
+  });
+
+  return card;
+}
 function displayBookmarks(bookmark) {
   const bookmarksList = document.getElementById('bookmarks-list');
   const bookmarksContainer = document.querySelector('.bookmarks-container');
@@ -59,7 +67,9 @@ function displayBookmarks(bookmark) {
     });
   });
   
-  setupSortable();
+  if (typeof S.setupSortable === 'function') {
+    S.setupSortable();
+  }
 }
 
 // 修改创建书签卡片时的颜色处理
@@ -120,7 +130,7 @@ function createBookmarkCard(bookmark, index) {
     event.preventDefault();
     event.stopPropagation(); // 阻止事件冒泡，防止触发文档级的contextmenu事件监听器
     console.log('Bookmark context menu triggered:', bookmark);
-    showContextMenu(event, bookmark, 'bookmark'); // 明确指定类型为 'bookmark'
+    S.showContextMenu(event, bookmark, 'bookmark'); // 明确指定类型为 'bookmark'
   });
 
   // 添加鼠标悬停效果
@@ -274,4 +284,4 @@ function createBookmarkCard(bookmark, index) {
 }
 
 
-Object.assign(S, { displayBookmarks, createBookmarkCard, createFolderCard });
+assignToScriptState({ displayBookmarks, createBookmarkCard, createFolderCard });

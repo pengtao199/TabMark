@@ -1,27 +1,6 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
-import {
-  SearchEngineManager, 
-  updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
-} from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
-import { STORAGE_KEYS } from '../../shared/storage-keys.js';
-import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
-import { showQrCodeModal } from '../qrcode-modal.js';
-import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
-const Utilities = createUtilities(getLocalizedMessage);
+import { getScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
 document.addEventListener('DOMContentLoaded', function () {
 
   // 在页面加载完成后立即检查 folder-name 元素
@@ -33,7 +12,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  observer.observe(folderNameElement, { childList: true, subtree: true });
+  if (folderNameElement) {
+    observer.observe(folderNameElement, { childList: true, subtree: true });
+  }
 
   function expandBookmarkTree(category) {
     let parent = category.parentElement;
@@ -53,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function waitForFirstCategoryEdge(attemptsLeft) {
-    waitForFirstCategory(attemptsLeft);
+    S.waitForFirstCategory(attemptsLeft);
   }
 
   function findBookmarksByParentId(nodes, parentId) {
@@ -78,7 +59,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (isEdgeBrowser()) {
     waitForFirstCategoryEdge(10);
   } else {
-    waitForFirstCategory(10);
+    S.waitForFirstCategory(10);
   }
 
   const toggleSidebarButton = document.getElementById('toggle-sidebar');
@@ -100,26 +81,28 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // 应用初始状态
-  setSidebarState(isSidebarCollapsed);
+  if (toggleSidebarButton && sidebarContainer) {
+    // 应用初始状态
+    setSidebarState(isSidebarCollapsed);
 
-  // 切换侧边状态的函数
-  function toggleSidebar() {
-    const isCollapsed = sidebarContainer.classList.toggle('collapsed');
-    setSidebarState(isCollapsed);
-    localStorage.setItem('sidebarCollapsed', isCollapsed);
+    // 切换侧边状态的函数
+    function toggleSidebar() {
+      const isCollapsed = sidebarContainer.classList.toggle('collapsed');
+      setSidebarState(isCollapsed);
+      localStorage.setItem('sidebarCollapsed', isCollapsed);
+    }
+
+    // 添加点击事件监听器
+    toggleSidebarButton.addEventListener('click', toggleSidebar);
   }
-
-  // 添加点击事件监听器
-  toggleSidebarButton.addEventListener('click', toggleSidebar);
 
   document.addEventListener('click', function (event) {
     if (event.target.closest('#categories-list li')) {
-      updateBookmarkCards();
+      S.updateBookmarkCards();
     }
   });
 
-  updateBookmarkCards();
+  S.updateBookmarkCards();
 
   // 注释掉这个重复的createContextMenu函数定义，使用全局已经定义的函数
   /* function createContextMenu() {
@@ -132,14 +115,15 @@ document.addEventListener('DOMContentLoaded', function () {
   document.addEventListener('click', function () {
     // 延迟处理点击事件，让菜单项的点击事件先执行
     setTimeout(() => {
-    if (contextMenu) {
-      contextMenu.style.display = 'none';
-        currentBookmark = null;
+    if (S.contextMenu) {
+      S.contextMenu.style.display = 'none';
+        S.currentBookmark = null;
       }
       
-      if (bookmarkFolderContextMenu) {
-        bookmarkFolderContextMenu.style.display = 'none';
-        currentBookmarkFolder = null;
+      if (S.bookmarkFolderContextMenu) {
+        S.bookmarkFolderContextMenu.style.display = 'none';
+        S.currentBookmarkFolder = null;
       }
     }, 200);
   });
+});

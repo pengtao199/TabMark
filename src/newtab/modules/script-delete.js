@@ -332,4 +332,4 @@ function createFolderCard(folder, index) {
 }
 
 
-Object.assign(S, { handleBookmarkDeletion, deleteBookmark, showToast });
+Object.assign(S, { handleBookmarkDeletion, deleteBookmark, showToast, createFolderCard });

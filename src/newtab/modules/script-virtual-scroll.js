@@ -1,27 +1,14 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
 import {
-  SearchEngineManager, 
+  SearchEngineManager,
   updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
+  createSearchEngineDropdown,
+  initializeSearchEngineDialog
 } from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
-import { STORAGE_KEYS } from '../../shared/storage-keys.js';
-import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
-import { showQrCodeModal } from '../qrcode-modal.js';
-import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
-const Utilities = createUtilities(getLocalizedMessage);
+import { initScrollIndicator } from '../ui-helpers.js';
+import { setupSpecialLinks } from './special-links.js';
+import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
 document.addEventListener('DOMContentLoaded', () => {
   const defaultEngine = SearchEngineManager.getDefaultEngine();
   if (defaultEngine) {
@@ -110,7 +97,7 @@ function initVirtualScroll() {
         allBookmarks = bookmarks;
         
         updateContainerHeight();
-        updateFolderName(parentId);
+        S.updateFolderName(parentId);
         renderVisibleBookmarks();
         
         bookmarksList.dataset.parentId = parentId;
@@ -134,7 +121,9 @@ document.addEventListener('DOMContentLoaded', function() {
   initScrollIndicator();
   
   // 其他初始化代码...
-  startPeriodicSync();
+  if (S.startPeriodicSync) {
+    S.startPeriodicSync();
+  }
   setupSpecialLinks();
   console.log('[Init] Starting initialization...');
 
@@ -316,12 +305,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 确保搜索框的动态高度调整功能正常工作
     const searchInput = document.querySelector('.search-input');
-    if (searchInput) {
+    if (searchInput && S.adjustTextareaHeight) {
       // 重新初始化搜索框高度
-      adjustTextareaHeight();
+      S.adjustTextareaHeight();
       
       // 确保输入事件监听器正常工作
-      searchInput.addEventListener('input', adjustTextareaHeight);
+      searchInput.addEventListener('input', S.adjustTextareaHeight);
     }
     
     // 调整默认文件夹切换区域的位置
@@ -496,4 +485,4 @@ const bookmarksCache = {
 };
 
 
-Object.assign(S, { initVirtualScroll, updateBookmarkCards, waitForFirstCategory });
+assignToScriptState({ initVirtualScroll, bookmarksCache });

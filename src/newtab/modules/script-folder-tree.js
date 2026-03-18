@@ -1,26 +1,9 @@
-import { featureTips } from '../feature-tips.js';
-import { initGestureNavigation } from '../gesture-navigation.js';
-import { applyBackgroundColor } from '../theme-utils.js';
-import {
-  SearchEngineManager, 
-  updateSearchEngineIcon,
-  setSearchEngineIcon,
-  createSearchEngineDropdown, 
-  initializeSearchEngineDialog,
-  getSearchUrl,
-  createTemporarySearchTabs,
-  getSearchEngineIconPath
-} from '../search-engine-dropdown.js';
-import { getMainOpenInNewTab, getSearchOpenInNewTab, getSidepanelOpenMode } from '../../shared/open-mode.js';
-import { STORAGE_KEYS } from '../../shared/storage-keys.js';
 import { ICONS } from '../icons.js';
-import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
-import { showQrCodeModal } from '../qrcode-modal.js';
-import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
-import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
-const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
-const getLocalizedMessage = S.getLocalizedMessage;
+import { createUtilities } from '../bookmark-actions.js';
+import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
+const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
 const Utilities = createUtilities(getLocalizedMessage);
 function displayBookmarkCategories(bookmarkNodes, level, parentUl, parentId) {
   const categoriesList = parentUl || document.getElementById('categories-list');
@@ -78,7 +61,7 @@ function displayBookmarkCategories(bookmarkNodes, level, parentUl, parentId) {
         });
         li.classList.add('bg-emerald-500');
 
-        updateBookmarksDisplay(bookmark.id);
+        S.updateBookmarksDisplay(bookmark.id);
       });
 
       li.appendChild(span);
@@ -89,7 +72,7 @@ function displayBookmarkCategories(bookmarkNodes, level, parentUl, parentId) {
     }
   });
 
-  setupSortable();
+  S.setupSortable();
 }
 
 // 添加一个获取文件夹内书签数量的函数
@@ -125,25 +108,25 @@ function createBookmarkFolderContextMenu() {
 
 async function createMenuItems(menu) {  
   console.log('=== Creating Menu Items ===');
-  console.log('Current bookmark folder:', currentBookmarkFolder);
+  console.log('Current bookmark folder:', S.currentBookmarkFolder);
   
   // 清空现有菜单项
   menu.innerHTML = '';
 
   // 每次创建菜单时重新检查当前文件夹的状态
   let isDefault = false;
-  if (currentBookmarkFolder?.dataset?.id) {
+  if (S.currentBookmarkFolder?.dataset?.id) {
     try {
       // 确保在获取状态前等待 chrome.storage.sync.get 完成
       const data = await chrome.storage.sync.get('defaultFolders');
       const defaultFolders = data.defaultFolders?.items || [];
-      isDefault = defaultFolders.some(folder => folder.id === currentBookmarkFolder.dataset.id);
+      isDefault = defaultFolders.some(folder => folder.id === S.currentBookmarkFolder.dataset.id);
       
       console.log('Folder status check:', {
-        folderId: currentBookmarkFolder.dataset.id,
+        folderId: S.currentBookmarkFolder.dataset.id,
         isDefault: isDefault,
         defaultFolders: defaultFolders,
-        folderTitle: currentBookmarkFolder.querySelector('.card-title')?.textContent
+        folderTitle: S.currentBookmarkFolder.querySelector('.card-title')?.textContent
       });
     } catch (error) {
       console.error('Error checking default folder status:', error);
@@ -156,9 +139,9 @@ async function createMenuItems(menu) {
       text: getLocalizedMessage('openAllBookmarks'),
       icon: 'open_in_new',  
       action: () => {
-        if (currentBookmarkFolder) {
-          const folderId = currentBookmarkFolder.dataset.id;
-          const folderTitle = currentBookmarkFolder.querySelector('.card-title').textContent;
+        if (S.currentBookmarkFolder) {
+          const folderId = S.currentBookmarkFolder.dataset.id;
+          const folderTitle = S.currentBookmarkFolder.querySelector('.card-title').textContent;
           
           chrome.bookmarks.getChildren(folderId, (bookmarks) => {
             // 过滤出有效的书签URL
@@ -185,14 +168,14 @@ async function createMenuItems(menu) {
       }
     },
     // 原有的菜单项
-    { text: getLocalizedMessage('rename'), icon: 'edit', action: () => currentBookmarkFolder && openEditBookmarkFolderDialog(currentBookmarkFolder) },
+    { text: getLocalizedMessage('rename'), icon: 'edit', action: () => S.currentBookmarkFolder && S.openEditBookmarkFolderDialog(S.currentBookmarkFolder) },
     { text: getLocalizedMessage('delete'), icon: 'delete', action: () => {
-      if (currentBookmarkFolder) {
-        const folderId = currentBookmarkFolder.dataset.id;
-        const folderTitle = currentBookmarkFolder.querySelector('.card-title').textContent;
-        const parentId = currentBookmarkFolder.dataset.parentId || '1';
+      if (S.currentBookmarkFolder) {
+        const folderId = S.currentBookmarkFolder.dataset.id;
+        const folderTitle = S.currentBookmarkFolder.querySelector('.card-title').textContent;
+        const parentId = S.currentBookmarkFolder.dataset.parentId || '1';
         
-        showConfirmDialog(chrome.i18n.getMessage("confirmDeleteFolder", [`<strong>${folderTitle}</strong>`]), async () => {
+        S.showConfirmDialog(chrome.i18n.getMessage("confirmDeleteFolder", [`<strong>${folderTitle}</strong>`]), async () => {
           try {
             await chrome.bookmarks.removeTree(folderId);
             
@@ -212,11 +195,11 @@ async function createMenuItems(menu) {
             }
 
             // 3. 清除相关缓存
-            if (bookmarksCache.data.has(folderId)) {
-              bookmarksCache.delete(folderId);
+            if (S.bookmarksCache.data.has(folderId)) {
+              S.bookmarksCache.delete(folderId);
             }
-            if (bookmarksCache.data.has(parentId)) {
-              bookmarksCache.delete(parentId);
+            if (S.bookmarksCache.data.has(parentId)) {
+              S.bookmarksCache.delete(parentId);
             }
             
             // 4. 显示删除成功的 toast 消息
@@ -225,15 +208,15 @@ async function createMenuItems(menu) {
             // 5. 如果删除的是当前显示的文件夹，则返回上一级并重新加载
             const bookmarksList = document.getElementById('bookmarks-list');
             if (bookmarksList.dataset.parentId === folderId) {
-              await updateBookmarksDisplay(parentId);
-              updateFolderName(parentId);
-              selectSidebarFolder(parentId);
+              await S.updateBookmarksDisplay(parentId);
+              S.updateFolderName(parentId);
+              S.selectSidebarFolder(parentId);
             }
 
             // 6. 重新加载父文件夹的内容
             const parentFolder = document.querySelector(`.bookmark-folder[data-id="${parentId}"]`);
             if (parentFolder) {
-              await updateBookmarksDisplay(parentId);
+              await S.updateBookmarksDisplay(parentId);
             }
 
           } catch (error) {
@@ -248,7 +231,7 @@ async function createMenuItems(menu) {
       text: isDefault ? getLocalizedMessage('removeFromDefaultFolders') : getLocalizedMessage('addToDefaultFolders'),
       icon: isDefault ? 'keep_off' : 'keep',
       action: async () => {
-        const folder = currentBookmarkFolder;
+        const folder = S.currentBookmarkFolder;
         console.log('Toggle default folder action triggered:', {
           folder: folder,
           folderId: folder?.dataset?.id,
@@ -260,7 +243,7 @@ async function createMenuItems(menu) {
           return;
         }
 
-        await toggleDefaultFolder(folder);
+        await S.toggleDefaultFolder(folder);
         
         // 重新获取当前状态
         const data = await chrome.storage.sync.get('defaultFolders');
@@ -313,4 +296,18 @@ async function createMenuItems(menu) {
     text.className = 'text';
     text.textContent = item.text;
 
-Object.assign(S, { displayBookmarkCategories, isDefaultFolder, createBookmarkFolderContextMenu, createMenuItems });
+    menuItem.appendChild(icon);
+    menuItem.appendChild(text);
+    menuItem.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await item.action();
+      setTimeout(() => {
+        menu.style.display = 'none';
+      }, 100);
+    });
+
+    menu.appendChild(menuItem);
+  });
+}
+
+assignToScriptState({ displayBookmarkCategories, isDefaultFolder, createBookmarkFolderContextMenu, createMenuItems });

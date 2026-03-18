@@ -7,7 +7,6 @@ import {
   setSearchEngineIcon,
   createSearchEngineDropdown, 
   initializeSearchEngineDialog,
-  getSearchUrl,
   createTemporarySearchTabs,
   getSearchEngineIconPath
 } from '../search-engine-dropdown.js';
@@ -123,7 +122,7 @@ const Utilities = createUtilities(getLocalizedMessage);
   });
 
   if (!searchForm || !searchInput || !tabsContainer || !searchEngineIcon) {
-    return;
+    console.warn('[Search] Required search elements not found, skip search core init.');
   }
 
   updateSubmitButtonState();
@@ -251,29 +250,6 @@ const Utilities = createUtilities(getLocalizedMessage);
     updateSearchEngineIcon(defaultEngine);
   }
 
-
-  // 修改 getSearchUrl 函数,使用 SearchEngineManager 中的配置
-  function getSearchUrl(engine, query) {
-    const allEngines = SearchEngineManager.getAllEngines();
-    const engineConfig = allEngines.find(e => {
-      // 匹配引擎名称或别名
-      return e.name.toLowerCase() === engine.toLowerCase() ||
-        (e.aliases && e.aliases.some(alias => alias.toLowerCase() === engine.toLowerCase()));
-    });
-
-    if (!engineConfig) {
-      // 如果找不到对应的引擎配置,使用默认引擎
-      const defaultEngine = SearchEngineManager.getDefaultEngine();
-      return defaultEngine.url + encodeURIComponent(query);
-    }
-
-    // 确保 URL 中包含查询参数占位符
-    const url = engineConfig.url.includes('%s') ? 
-      engineConfig.url.replace('%s', encodeURIComponent(query)) :
-      engineConfig.url + encodeURIComponent(query);
-
-    return url;
-  }
 
   // 动态调整 textarea 度的函数
   function adjustTextareaHeight() {

@@ -5,6 +5,9 @@ import {
   replaceIconsWithSvg,
   onDomReadyOnce
 } from './script-shared-init.js';
+import { getScriptState } from './script-runtime-bridge.js';
+
+const S = getScriptState();
 let bookmarkTreeNodes = [];
 let defaultSearchEngine = 'google';
 let contextMenu = null;
@@ -82,7 +85,9 @@ onDomReadyOnce('script-init:startup', function () {
   });
 
   // 初始化手势导航，传入 updateBookmarksDisplay 函数
-  initGestureNavigation(updateBookmarksDisplay);
+  if (typeof S.updateBookmarksDisplay === 'function') {
+    initGestureNavigation(S.updateBookmarksDisplay);
+  }
    // 初始化功能提示
   featureTips.initAllTips();
   // 替换所有图标

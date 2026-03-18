@@ -65,6 +65,12 @@ export function updateDefaultFoldersTabsVisibility() {
 
 
 export function openSettingsModal() {
+  const settingsManager = globalThis.__tabmarkSettingsManager;
+  if (settingsManager && typeof settingsManager.openSettingsSidebar === 'function') {
+    settingsManager.openSettingsSidebar();
+    return;
+  }
+
   // 修改为打开侧边栏
   const settingsSidebar = document.getElementById('settings-sidebar');
   const settingsOverlay = document.getElementById('settings-overlay');

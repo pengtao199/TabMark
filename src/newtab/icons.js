@@ -56,6 +56,53 @@ function replaceIconsWithSvg() {
   });
 }
 
+let iconObserverStarted = false;
+
+function startIconReplacementObserver() {
+  if (iconObserverStarted || typeof MutationObserver === 'undefined') {
+    return;
+  }
+
+  iconObserverStarted = true;
+  const observer = new MutationObserver((mutations) => {
+    let shouldReplace = false;
+    for (const mutation of mutations) {
+      if (mutation.type !== 'childList') {
+        continue;
+      }
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) {
+          continue;
+        }
+        if (node.classList?.contains('material-icons') || node.querySelector?.('.material-icons')) {
+          shouldReplace = true;
+          break;
+        }
+      }
+      if (shouldReplace) {
+        break;
+      }
+    }
+
+    if (shouldReplace) {
+      replaceIconsWithSvg();
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function bootIconReplacement() {
+  replaceIconsWithSvg();
+  startIconReplacementObserver();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootIconReplacement, { once: true });
+} else {
+  bootIconReplacement();
+}
+
 // 辅助函数：获取图标 HTML
 function getIconHtml(iconName) {
   return ICONS[iconName] ? 

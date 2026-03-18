@@ -1,4 +1,4 @@
-import { SearchEngineManager, getCustomEngines } from './search-engine-dropdown-data.js';
+import { SearchEngineManager, getCustomEngines as getStoredCustomEngines } from './search-engine-dropdown-data.js';
 
 let refreshDropdownHandler = null;
 
@@ -10,6 +10,41 @@ function refreshSearchEngineDropdown() {
   if (refreshDropdownHandler) {
     refreshDropdownHandler();
   }
+}
+
+function bindEngineToggleHandlers({
+  engineItem,
+  checkbox,
+  engine,
+  onToggle,
+  ignoreClickSelector = null
+}) {
+  const shouldIgnoreItemClick = (target) => {
+    if (!(target instanceof Element)) {
+      return true;
+    }
+
+    if (target.closest('.custom-checkbox')) {
+      return true;
+    }
+
+    return Boolean(ignoreClickSelector && target.closest(ignoreClickSelector));
+  };
+
+  engineItem.addEventListener('click', (event) => {
+    if (shouldIgnoreItemClick(event.target)) {
+      return;
+    }
+
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  checkbox.addEventListener('change', (event) => {
+    const enabled = event.target.checked;
+    engineItem.classList.toggle('selected', enabled);
+    onToggle(engine, enabled);
+  });
 }
 
 function initCustomEngineForm() {
@@ -173,7 +208,7 @@ async function saveCustomEngine(engine) {
       engine.icon = favicon || generateTextIcon(engine.label);
     }
 
-    const customEngines = getCustomEngines();
+    const customEngines = getStoredCustomEngines();
     customEngines.push(engine);
     localStorage.setItem('customSearchEngines', JSON.stringify(customEngines));
     
@@ -185,7 +220,7 @@ async function saveCustomEngine(engine) {
     console.error('Error saving custom engine:', error);
     // 使用文本图标作为后备
     engine.icon = generateTextIcon(engine.label);
-    const customEngines = getCustomEngines();
+    const customEngines = getStoredCustomEngines();
     customEngines.push(engine);
     localStorage.setItem('customSearchEngines', JSON.stringify(customEngines));
     // 立即更新下拉菜单
@@ -193,16 +228,10 @@ async function saveCustomEngine(engine) {
   }
 }
 
-// 获取自定义搜索引擎列表
-function getCustomEngines() {
-  const stored = localStorage.getItem('customSearchEngines');
-  return stored ? JSON.parse(stored) : [];
-}
-
 // 修改 deleteCustomEngine 函数
 function deleteCustomEngine(engineId) {
   if (confirm(chrome.i18n.getMessage('searchEngineDeleteConfirm'))) {
-    const customEngines = getCustomEngines();
+    const customEngines = getStoredCustomEngines();
     const filtered = customEngines.filter(e => e.name !== engineId);
     localStorage.setItem('customSearchEngines', JSON.stringify(filtered));
     
@@ -221,7 +250,7 @@ function refreshCustomEngines() {
   if (!container) return;
 
   container.innerHTML = '';
-  const customEngines = getCustomEngines();
+  const customEngines = getStoredCustomEngines();
   const enabledEngines = SearchEngineManager.getEnabledEngines();
   const enabledEngineNames = enabledEngines.map(e => e.name);
 
@@ -268,39 +297,25 @@ function refreshCustomEngines() {
     engineItem.appendChild(engineInfo);
     engineItem.appendChild(deleteButton);
 
-    // 简化事件处理逻辑
-    const toggleEngine = (e) => {
-      // 获取实际的复选框元素
-      const checkbox = e.currentTarget.querySelector('input[type="checkbox"]');
-      
-      // 排除删除按钮和复选框本身的点击
-      if (e.target.closest('.delete-custom-engine') || e.target === checkbox) {
-        return;
-      }
-
-      // 切换复选框状态
-      checkbox.checked = !checkbox.checked;
-      
-      // 触发change事件以同步状态
-      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      // 更新样式和状态
-      e.currentTarget.classList.toggle('selected', checkbox.checked);
-      handleEngineToggle(engine, checkbox.checked);
-    };
-
-    // 为整个项目添加点击事件
-    engineItem.addEventListener('click', toggleEngine);
-    
-    // 移除复选框的点击事件阻止
-    checkbox.addEventListener('change', (e) => {
-      // 直接更新状态
-      engineItem.classList.toggle('selected', e.target.checked);
-      handleEngineToggle(engine, e.target.checked);
+    bindEngineToggleHandlers({
+      engineItem,
+      checkbox,
+      engine,
+      onToggle: handleCustomEngineToggle,
+      ignoreClickSelector: '.delete-custom-engine'
     });
 
     container.appendChild(engineItem);
   });
+}
+
+function handleCustomEngineToggle(engine, enabled) {
+  if (enabled) {
+    SearchEngineManager.addEngine(engine.name);
+  } else {
+    SearchEngineManager.removeEngine(engine.name);
+  }
+  refreshSearchEngineDropdown();
 }
 
 
@@ -311,5 +326,6 @@ export {
   saveCustomEngine,
   deleteCustomEngine,
   refreshCustomEngines,
-  setSearchEngineDropdownRefresher
+  setSearchEngineDropdownRefresher,
+  bindEngineToggleHandlers
 };
