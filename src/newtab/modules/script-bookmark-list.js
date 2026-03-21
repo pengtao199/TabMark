@@ -14,6 +14,7 @@ function createFolderCard(folder, index) {
   card.dataset.id = folder.id;
   card.dataset.parentId = folder.parentId;
   card.dataset.index = index.toString();
+  card.setAttribute('draggable', 'false');
 
   const title = document.createElement('div');
   title.className = 'card-title';
@@ -31,6 +32,37 @@ function createFolderCard(folder, index) {
 
   return card;
 }
+
+function createBookmarkCreateCard() {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'bookmark-create-card card';
+  card.dataset.virtualCreate = 'true';
+  card.setAttribute('aria-label', '新增书签或文件夹');
+  card.setAttribute('draggable', 'false');
+
+  const plus = document.createElement('span');
+  plus.className = 'bookmark-create-icon';
+  plus.textContent = '+';
+
+  const label = document.createElement('span');
+  label.className = 'bookmark-create-label';
+  label.textContent = '新增书签 / 文件夹';
+
+  card.appendChild(plus);
+  card.appendChild(label);
+
+  card.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof S.openCreateBookmarkDialog === 'function') {
+      S.openCreateBookmarkDialog('bookmark');
+    }
+  });
+
+  return card;
+}
+
 function displayBookmarks(bookmark) {
   const bookmarksList = document.getElementById('bookmarks-list');
   const bookmarksContainer = document.querySelector('.bookmarks-container');
@@ -38,8 +70,12 @@ function displayBookmarks(bookmark) {
     return;
   }
 
-  // 先移除 loaded 类
-  bookmarksContainer.classList.remove('loaded');
+  const skipTransition = Boolean(S.skipBookmarkRenderTransition);
+  if (!skipTransition) {
+    bookmarksContainer.classList.remove('loaded');
+  } else {
+    bookmarksContainer.classList.add('loaded');
+  }
   
   const fragment = document.createDocumentFragment();
   
@@ -56,17 +92,22 @@ function displayBookmarks(bookmark) {
       fragment.appendChild(folderCard);
     }
   });
+
+  fragment.appendChild(createBookmarkCreateCard());
   
   bookmarksList.innerHTML = '';
   bookmarksList.appendChild(fragment);
   bookmarksList.dataset.parentId = bookmark.id;
   
-  // 使用 requestAnimationFrame 确保在下一帧添加 loaded 类
-  requestAnimationFrame(() => {
+  if (!skipTransition) {
     requestAnimationFrame(() => {
-      bookmarksContainer.classList.add('loaded');
+      requestAnimationFrame(() => {
+        bookmarksContainer.classList.add('loaded');
+      });
     });
-  });
+  } else {
+    bookmarksContainer.classList.add('loaded');
+  }
   
   if (typeof S.setupSortable === 'function') {
     S.setupSortable();
@@ -81,10 +122,12 @@ function createBookmarkCard(bookmark, index) {
   card.dataset.id = bookmark.id;
   card.dataset.parentId = bookmark.parentId;
   card.dataset.index = index.toString();
+  card.setAttribute('draggable', 'false');
 
   const img = document.createElement('img');
   img.className = 'w-6 h-6 mr-2';
   img.src = `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(bookmark.url)}&size=32`;
+  img.setAttribute('draggable', 'false');
 
   // 尝试从缓存获取颜色
   const cachedColors = localStorage.getItem(`bookmark-colors-${bookmark.id}`);
@@ -127,6 +170,15 @@ function createBookmarkCard(bookmark, index) {
   content.appendChild(title);
   card.appendChild(content);
 
+  const preventNativeDrag = (event) => {
+    event.preventDefault();
+  };
+
+  card.addEventListener('dragstart', preventNativeDrag);
+  img.addEventListener('dragstart', preventNativeDrag);
+  content.addEventListener('dragstart', preventNativeDrag);
+  title.addEventListener('dragstart', preventNativeDrag);
+
   card.addEventListener('contextmenu', function(event) {
     event.preventDefault();
     event.stopPropagation(); // 阻止事件冒泡，防止触发文档级的contextmenu事件监听器
@@ -159,6 +211,10 @@ function createBookmarkCard(bookmark, index) {
   card.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if ((S.suppressBookmarkClicksUntil || 0) > Date.now()) {
+      return;
+    }
 
     if (isProcessingClick) return;
     isProcessingClick = true;

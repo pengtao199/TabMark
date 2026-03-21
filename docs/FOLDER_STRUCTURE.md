@@ -23,7 +23,10 @@
   - `qrcode-modal.js`: QR code modal rendering/actions
   - `bookmark-actions.js`: bookmark open/copy/toast actions
   - `ui-helpers.js`: scroll indicator, settings modal, feedback helpers
-  - `modules/`: extracted feature slices (e.g. `special-links.js`)
+  - `modules/`: extracted feature slices
+    - `script-sortable.js`: bookmarks panel drag-sort and drop-into-folder handling
+    - `script-bookmark-create.js`: current-folder create dialog for bookmarks/folders
+    - `special-links.js`: special newtab link helpers
 
 - `src/content/`
   - `content.js`: floating button / sidebar entry on web pages
@@ -35,7 +38,7 @@
   - `manager-dom-helpers.js`: sidepanel manager DOM helper methods
 
 - `src/vendor/`
-  - third-party/minified scripts (`lodash`, `qrcode`, `Sortable`)
+  - third-party/minified scripts (`lodash`, `qrcode`, `Sortable`, `interact`)
 
 ## Rules
 

@@ -23,6 +23,11 @@ Important notes:
 2. UI layer
 - New tab and sidepanel page-specific bootstrap should be separate.
 - Shared UI logic goes to reusable modules, not global script blocks.
+- New tab bookmark interactions should stay split by responsibility:
+  - rendering in `script-bookmark-list.js`
+  - folder navigation/cache refresh in `script-folder-nav.js`
+  - drag/drop organization in `script-sortable.js`
+  - create flows in `script-bookmark-create.js`
 
 3. State layer
 - Keys and read/write adapters must be centralized.

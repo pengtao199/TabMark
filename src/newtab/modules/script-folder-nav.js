@@ -17,6 +17,19 @@ function setCacheEntry(parentId, bookmarks) {
   }
   fallbackBookmarksCache.set(parentId, { bookmarks, timestamp: Date.now() });
 }
+function invalidateBookmarkCache(parentIds = []) {
+  const ids = Array.isArray(parentIds) ? parentIds : [parentIds];
+
+  ids
+    .filter(Boolean)
+    .forEach((parentId) => {
+      if (S.bookmarksCache?.delete) {
+        S.bookmarksCache.delete(parentId);
+      } else {
+        fallbackBookmarksCache.delete(parentId);
+      }
+    });
+}
 const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
 async function initDefaultFoldersTabs() {
   const tabsContainer = document.querySelector('.tabs-container');
@@ -272,18 +285,11 @@ function updateBookmarksDisplay(parentId, movedItemId, newIndex) {
         return;
       }
 
-      const bookmarksList = document.getElementById('bookmarks-list');
-      const bookmarksContainer = document.querySelector('.bookmarks-container');
-
       // 更新缓存
       setCacheEntry(parentId, bookmarks);
 
       // 显示书签
       S.displayBookmarks({ id: parentId, children: bookmarks });
-
-      if (movedItemId && typeof S.highlightBookmark === 'function') {
-        S.highlightBookmark(movedItemId);
-      }
 
       // 更新文件夹名称
       updateFolderName(parentId);
@@ -474,6 +480,24 @@ function selectSidebarFolder(folderId) {
   });
 }
 
+function refreshBookmarkTree() {
+  return new Promise((resolve) => {
+    chrome.bookmarks.getTree((nodes) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error refreshing bookmark tree:', chrome.runtime.lastError);
+        resolve();
+        return;
+      }
+
+      S.bookmarkTreeNodes = nodes;
+      if (typeof S.displayBookmarkCategories === 'function' && nodes?.[0]?.children) {
+        S.displayBookmarkCategories(nodes[0].children, 0, null, '1');
+      }
+      resolve(nodes);
+    });
+  });
+}
+
 
 assignToScriptState({
   initDefaultFoldersTabs,
@@ -487,5 +511,7 @@ assignToScriptState({
   navigateToPath,
   updateDefaultBookmarkIndicator,
   updateSidebarDefaultBookmarkIndicator,
-  selectSidebarFolder
+  selectSidebarFolder,
+  invalidateBookmarkCache,
+  refreshBookmarkTree
 });

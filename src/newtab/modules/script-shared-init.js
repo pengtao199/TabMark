@@ -17,11 +17,8 @@ export { ICONS, replaceIconsWithSvg, getIconHtml } from '../icons.js';
 export { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
 export { showQrCodeModal } from '../qrcode-modal.js';
 export { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
+import { createUtilities } from '../bookmark-actions.js';
 export {
-  showMovingFeedback,
-  hideMovingFeedback,
-  showSuccessFeedback,
-  showErrorFeedback,
   setVersionNumber,
   updateDefaultFoldersTabsVisibility,
   openSettingsModal,

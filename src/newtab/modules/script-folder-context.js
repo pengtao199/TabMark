@@ -17,7 +17,7 @@ import { ICONS } from '../icons.js';
 import { ColorCache, getColors, applyColors, updateBookmarkColors } from '../color-utils.js';
 import { showQrCodeModal } from '../qrcode-modal.js';
 import { openInNewWindow, openInIncognito, createUtilities } from '../bookmark-actions.js';
-import { showMovingFeedback, hideMovingFeedback, showSuccessFeedback, showErrorFeedback, setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
+import { setVersionNumber, updateDefaultFoldersTabsVisibility, openSettingsModal, initScrollIndicator } from '../ui-helpers.js';
 import { replaceIconsWithSvg, getIconHtml } from '../icons.js';
 const S = globalThis.__tabmarkScript || (globalThis.__tabmarkScript = {});
 const getLocalizedMessage = S.getLocalizedMessage;
@@ -375,10 +375,6 @@ const Utilities = createUtilities(getLocalizedMessage);
         });
 
         bookmarksList.dataset.parentId = parentId;
-
-        if (movedItemId) {
-          highlightBookmark(movedItemId);
-        }
 
         // 更新文件夹名称
         updateFolderName(parentId);

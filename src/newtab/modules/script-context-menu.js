@@ -35,10 +35,39 @@ function deleteBookmark(bookmarkId, bookmarkTitle) {
     return;
   }
   chrome.bookmarks.remove(bookmarkId, () => {
-    if (!chrome.runtime.lastError && typeof S.updateBookmarksDisplay === 'function') {
-      const parentId = document.getElementById('bookmarks-list')?.dataset?.parentId || '1';
-      S.updateBookmarksDisplay(parentId);
+    if (chrome.runtime.lastError) {
+      console.error('Error deleting bookmark:', chrome.runtime.lastError);
+      Utilities.showToast('删除书签失败');
+      return;
     }
+
+    const parentId = document.getElementById('bookmarks-list')?.dataset?.parentId || '1';
+    Promise.resolve()
+      .then(() => {
+        if (typeof S.invalidateBookmarkCache === 'function') {
+          S.invalidateBookmarkCache([parentId]);
+        }
+        if (typeof S.refreshBookmarkTree === 'function') {
+          return S.refreshBookmarkTree();
+        }
+        return null;
+      })
+      .then(() => {
+        if (typeof S.updateBookmarksDisplay === 'function') {
+          return S.updateBookmarksDisplay(parentId);
+        }
+        return null;
+      })
+      .then(() => {
+        if (typeof S.updateFolderName === 'function') {
+          S.updateFolderName(parentId);
+        }
+        Utilities.showToast('书签已删除');
+      })
+      .catch((error) => {
+        console.error('Error refreshing after bookmark deletion:', error);
+        Utilities.showToast('删除成功，但刷新失败');
+      });
   });
 }
 
@@ -51,11 +80,72 @@ function deleteQuickLink(item) {
 }
 
 function openEditDialog(item) {
-  if (typeof S.openEditDialog === 'function') {
-    S.openEditDialog(item);
+  if (!item?.id) {
     return;
   }
-  console.warn('openEditDialog is not available');
+
+  const editDialog = document.getElementById('edit-dialog');
+  const editForm = document.getElementById('edit-form');
+  const editNameInput = document.getElementById('edit-name');
+  const editUrlInput = document.getElementById('edit-url');
+  const cancelButton = editDialog?.querySelector('.cancel-button');
+  const closeButton = editDialog?.querySelector('.close-button');
+
+  if (!editDialog || !editForm || !editNameInput || !editUrlInput) {
+    console.warn('edit dialog is not available');
+    return;
+  }
+
+  editNameInput.value = item.title || '';
+  editUrlInput.value = item.url || '';
+  editDialog.style.display = 'block';
+
+  const closeEditDialog = () => {
+    editDialog.style.display = 'none';
+  };
+
+  editForm.onsubmit = async (event) => {
+    event.preventDefault();
+    const nextTitle = editNameInput.value.trim();
+    const nextUrl = editUrlInput.value.trim();
+
+    if (!nextTitle || !nextUrl) {
+      Utilities.showToast('请填写完整书签信息');
+      return;
+    }
+
+    chrome.bookmarks.update(item.id, { title: nextTitle, url: nextUrl }, async () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error updating bookmark:', chrome.runtime.lastError);
+        Utilities.showToast('编辑书签失败');
+        return;
+      }
+
+      const parentId = document.getElementById('bookmarks-list')?.dataset?.parentId || '1';
+      if (typeof S.invalidateBookmarkCache === 'function') {
+        S.invalidateBookmarkCache([parentId]);
+      }
+      if (typeof S.refreshBookmarkTree === 'function') {
+        await S.refreshBookmarkTree();
+      }
+      if (typeof S.updateBookmarksDisplay === 'function') {
+        await S.updateBookmarksDisplay(parentId);
+      }
+      if (typeof S.updateFolderName === 'function') {
+        S.updateFolderName(parentId);
+      }
+
+      Utilities.showToast('书签已更新');
+      closeEditDialog();
+    });
+  };
+
+  if (cancelButton) {
+    cancelButton.onclick = closeEditDialog;
+  }
+  if (closeButton) {
+    closeButton.onclick = closeEditDialog;
+  }
 }
 
 function createContextMenu() {

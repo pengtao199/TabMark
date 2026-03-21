@@ -1,33 +1,3 @@
-export function showMovingFeedback(element) {
-  element.style.opacity = '0.5';
-}
-
-
-
-export function hideMovingFeedback(element) {
-  element.style.opacity = '1';
-}
-
-
-
-export function showSuccessFeedback(element) {
-  element.style.backgroundColor = '#e6ffe6';
-  setTimeout(() => {
-    element.style.backgroundColor = '';
-  }, 1000);
-}
-
-
-
-export function showErrorFeedback(element) {
-  element.style.backgroundColor = '#ffe6e6';
-  setTimeout(() => {
-    element.style.backgroundColor = '';
-  }, 1000);
-}
-
-
-
 export function setVersionNumber() {
   const manifest = chrome.runtime.getManifest();
   const versionElement = document.querySelector('.about-version');
