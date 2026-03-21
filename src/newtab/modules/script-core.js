@@ -1,5 +1,6 @@
 import './script-utils.js';
 import './script-bookmark-list.js';
+import './script-bookmark-icon-refresh.js';
 import './script-bookmark-create.js';
 import './script-folder-nav.js';
 import './script-bookmark-cards.js';

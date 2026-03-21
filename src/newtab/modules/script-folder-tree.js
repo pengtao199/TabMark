@@ -5,6 +5,19 @@ import { getScriptState, assignToScriptState } from './script-runtime-bridge.js'
 const S = getScriptState();
 const getLocalizedMessage = (...args) => S.getLocalizedMessage(...args);
 const Utilities = createUtilities(getLocalizedMessage);
+
+function removeBookmarkTree(folderId) {
+  return new Promise((resolve, reject) => {
+    chrome.bookmarks.removeTree(folderId, () => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 function displayBookmarkCategories(bookmarkNodes, level, parentUl, parentId) {
   const categoriesList = parentUl || document.getElementById('categories-list');
 
@@ -106,33 +119,88 @@ function createBookmarkFolderContextMenu() {
   return menu;
 }
 
+function openEditBookmarkFolderDialog(folderElement) {
+  if (!folderElement?.dataset?.id) {
+    return;
+  }
+
+  const dialog = document.getElementById('edit-category-dialog');
+  const form = document.getElementById('edit-category-form');
+  const input = document.getElementById('edit-category-name');
+  const closeButton = document.querySelector('.close-category-button');
+  const cancelButton = document.querySelector('.cancel-category-button');
+
+  if (!dialog || !form || !input) {
+    console.warn('edit category dialog is not available');
+    return;
+  }
+
+  const folderId = folderElement.dataset.id;
+  input.value = folderElement.querySelector('.card-title')?.textContent || folderElement.dataset.title || '';
+  dialog.style.display = 'block';
+
+  const closeDialog = () => {
+    dialog.style.display = 'none';
+  };
+
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const nextTitle = input.value.trim();
+    if (!nextTitle) {
+      return;
+    }
+
+    chrome.bookmarks.update(folderId, { title: nextTitle }, async () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error updating folder title:', chrome.runtime.lastError);
+        Utilities.showToast(getLocalizedMessage('renameFolderError') || '重命名文件夹失败');
+        return;
+      }
+
+      const titleElement = folderElement.querySelector('.card-title');
+      if (titleElement) {
+        titleElement.textContent = nextTitle;
+      }
+      folderElement.dataset.title = nextTitle;
+
+      const sidebarFolder = document.querySelector(`#categories-list li[data-id="${folderId}"]`);
+      if (sidebarFolder) {
+        sidebarFolder.dataset.title = nextTitle;
+        const textSpan = sidebarFolder.querySelector('span:not(.material-icons):not(.icon-svg)');
+        if (textSpan) {
+          textSpan.textContent = nextTitle;
+        }
+      }
+
+      const parentId = folderElement.dataset.parentId || document.getElementById('bookmarks-list')?.dataset?.parentId || '1';
+      if (typeof S.invalidateBookmarkCache === 'function') {
+        S.invalidateBookmarkCache([folderId, parentId]);
+      }
+      if (typeof S.refreshBookmarkTree === 'function') {
+        await S.refreshBookmarkTree();
+      }
+      if (typeof S.updateFolderName === 'function') {
+        S.updateFolderName(document.getElementById('bookmarks-list')?.dataset?.parentId || parentId);
+      }
+
+      closeDialog();
+    });
+  };
+
+  if (closeButton) {
+    closeButton.onclick = closeDialog;
+  }
+  if (cancelButton) {
+    cancelButton.onclick = closeDialog;
+  }
+}
+
 async function createMenuItems(menu) {  
   console.log('=== Creating Menu Items ===');
   console.log('Current bookmark folder:', S.currentBookmarkFolder);
   
   // 清空现有菜单项
   menu.innerHTML = '';
-
-  // 每次创建菜单时重新检查当前文件夹的状态
-  let isDefault = false;
-  if (S.currentBookmarkFolder?.dataset?.id) {
-    try {
-      // 确保在获取状态前等待 chrome.storage.sync.get 完成
-      const data = await chrome.storage.sync.get('defaultFolders');
-      const defaultFolders = data.defaultFolders?.items || [];
-      isDefault = defaultFolders.some(folder => folder.id === S.currentBookmarkFolder.dataset.id);
-      
-      console.log('Folder status check:', {
-        folderId: S.currentBookmarkFolder.dataset.id,
-        isDefault: isDefault,
-        defaultFolders: defaultFolders,
-        folderTitle: S.currentBookmarkFolder.querySelector('.card-title')?.textContent
-      });
-    } catch (error) {
-      console.error('Error checking default folder status:', error);
-      isDefault = false;
-    }
-  }
 
   const menuItems = [
     { 
@@ -177,7 +245,7 @@ async function createMenuItems(menu) {
         
         S.showConfirmDialog(chrome.i18n.getMessage("confirmDeleteFolder", [`<strong>${folderTitle}</strong>`]), async () => {
           try {
-            await chrome.bookmarks.removeTree(folderId);
+            await removeBookmarkTree(folderId);
             
             // 1. 立即从 UI 中移除文件夹卡片
             const folderCard = document.querySelector(`.bookmark-folder[data-id="${folderId}"]`);
@@ -195,11 +263,11 @@ async function createMenuItems(menu) {
             }
 
             // 3. 清除相关缓存
-            if (S.bookmarksCache.data.has(folderId)) {
-              S.bookmarksCache.delete(folderId);
+            if (typeof S.invalidateBookmarkCache === 'function') {
+              S.invalidateBookmarkCache([folderId, parentId]);
             }
-            if (S.bookmarksCache.data.has(parentId)) {
-              S.bookmarksCache.delete(parentId);
+            if (typeof S.invalidateFolderPreviewCache === 'function') {
+              S.invalidateFolderPreviewCache([folderId, parentId]);
             }
             
             // 4. 显示删除成功的 toast 消息
@@ -213,9 +281,8 @@ async function createMenuItems(menu) {
               S.selectSidebarFolder(parentId);
             }
 
-            // 6. 重新加载父文件夹的内容
-            const parentFolder = document.querySelector(`.bookmark-folder[data-id="${parentId}"]`);
-            if (parentFolder) {
+            // 6. 重新加载父文件夹的内容和预览
+            if (document.getElementById('bookmarks-list')?.dataset?.parentId === parentId) {
               await S.updateBookmarksDisplay(parentId);
             }
 
@@ -225,51 +292,7 @@ async function createMenuItems(menu) {
           }
         });
       }
-    }},
-    {
-      // 根据当前状态设置文本
-      text: isDefault ? getLocalizedMessage('removeFromDefaultFolders') : getLocalizedMessage('addToDefaultFolders'),
-      icon: isDefault ? 'keep_off' : 'keep',
-      action: async () => {
-        const folder = S.currentBookmarkFolder;
-        console.log('Toggle default folder action triggered:', {
-          folder: folder,
-          folderId: folder?.dataset?.id,
-          currentIsDefault: isDefault
-        });
-
-        if (!folder?.dataset?.id) {
-          console.error('No valid folder selected');
-          return;
-        }
-
-        await S.toggleDefaultFolder(folder);
-        
-        // 重新获取当前状态
-        const data = await chrome.storage.sync.get('defaultFolders');
-        const defaultFolders = data.defaultFolders?.items || [];
-        const newIsDefault = defaultFolders.some(f => f.id === folder.dataset.id);
-        
-        console.log('Menu item status update:', {
-          oldState: isDefault,
-          newState: newIsDefault,
-          folderId: folder.dataset.id,
-          defaultFolders: defaultFolders
-        });
-
-        const menuItem = menu.querySelector(`[data-action="toggleDefault"]`);
-        if (menuItem) {
-          const newText = getLocalizedMessage(newIsDefault ? 'removeFromDefaultFolders' : 'addToDefaultFolders');
-          console.log('Updating menu item text to:', newText);
-          
-          menuItem.querySelector('.text').textContent = newText;
-          const iconElement = menuItem.querySelector('.icon-svg');
-          if (iconElement) {
-            iconElement.innerHTML = ICONS[newIsDefault ? 'keep_off' : 'keep'];
-          }
-        }
-      }
-    }
+    }}
   ];
 
   // 创建菜单项
@@ -281,16 +304,9 @@ async function createMenuItems(menu) {
     const menuItem = document.createElement('div');
     menuItem.className = 'custom-context-menu-item';
     
-    if (item.icon === 'keep' || item.icon === 'keep_off') {
-      menuItem.dataset.action = 'toggleDefault';
-    }
-    
     const icon = document.createElement('span');
     icon.className = 'icon-svg';
     icon.innerHTML = ICONS[item.icon];
-    if (item.icon === 'keep' || item.icon === 'keep_off') {
-      icon.classList.toggle('selected', isDefault);
-    }
     
     const text = document.createElement('span');
     text.className = 'text';
@@ -310,4 +326,10 @@ async function createMenuItems(menu) {
   });
 }
 
-assignToScriptState({ displayBookmarkCategories, isDefaultFolder, createBookmarkFolderContextMenu, createMenuItems });
+assignToScriptState({
+  displayBookmarkCategories,
+  isDefaultFolder,
+  createBookmarkFolderContextMenu,
+  createMenuItems,
+  openEditBookmarkFolderDialog
+});

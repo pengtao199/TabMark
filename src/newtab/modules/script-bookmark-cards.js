@@ -279,53 +279,9 @@ async function waitForFirstCategory(attemptsLeft = 5) {
       bookmarksContainer.style.transition = 'opacity 0.3s ease';
     }
 
-    // 2. 尝试获取上次访问的文件夹
-    const { [STORAGE_KEYS.LAST_VIEWED_FOLDER]: lastViewedFolder } = await chrome.storage.local.get(STORAGE_KEYS.LAST_VIEWED_FOLDER);
-    
-    if (lastViewedFolder) {
-      try {
-        const results = await chrome.bookmarks.get(lastViewedFolder);
-        if (results && results.length > 0) {
-          if (typeof S.updateBookmarksDisplay === 'function') {
-            await S.updateBookmarksDisplay(lastViewedFolder);
-          } else {
-            updateBookmarkCards();
-          }
-          S.updateFolderName(lastViewedFolder);
-          S.selectSidebarFolder(lastViewedFolder);
-          // 显示内容
-          bookmarksContainer.style.opacity = '1';
-          return;
-        }
-      } catch (error) {
-        console.log('Last viewed folder no longer exists:', error);
-      }
-    }
+    await chrome.storage.local.remove([STORAGE_KEYS.LAST_VIEWED_FOLDER, 'lastViewedTime']);
 
-    // 3. 尝试使用用户设置的默认文件夹
-    const { [STORAGE_KEYS.DEFAULT_FOLDERS]: defaultFolders } = await chrome.storage.sync.get(STORAGE_KEYS.DEFAULT_FOLDERS);
-    if (defaultFolders?.items?.length > 0) {
-      const defaultFolderId = defaultFolders.items[0].id;
-      try {
-        const results = await chrome.bookmarks.get(defaultFolderId);
-        if (results && results.length > 0) {
-          if (typeof S.updateBookmarksDisplay === 'function') {
-            await S.updateBookmarksDisplay(defaultFolderId);
-          } else {
-            updateBookmarkCards();
-          }
-          S.updateFolderName(defaultFolderId);
-          S.selectSidebarFolder(defaultFolderId);
-          // 显示内容
-          bookmarksContainer.style.opacity = '1';
-          return;
-        }
-      } catch (error) {
-        console.log('Default folder no longer exists:', error);
-      }
-    }
-
-    // 4. 兜底方案：使用书签栏根目录
+    // 默认固定显示书签栏根目录
     if (typeof S.updateBookmarksDisplay === 'function') {
       await S.updateBookmarksDisplay('1');
     } else {

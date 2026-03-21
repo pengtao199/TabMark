@@ -3,6 +3,91 @@ import { getColors, applyColors } from '../color-utils.js';
 import { getScriptState, assignToScriptState } from './script-runtime-bridge.js';
 
 const S = getScriptState();
+const folderPreviewCache = new Map();
+
+function invalidateFolderPreviewCache(folderIds = []) {
+  const ids = Array.isArray(folderIds) ? folderIds : [folderIds];
+  ids.filter(Boolean).forEach((folderId) => {
+    folderPreviewCache.delete(folderId);
+  });
+}
+
+function resolveBookmarkIconSource(bookmarkId, bookmarkUrl) {
+  if (typeof S.resolveBookmarkIconSource === 'function') {
+    return S.resolveBookmarkIconSource(bookmarkId, bookmarkUrl);
+  }
+
+  return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(bookmarkUrl)}&size=32`;
+}
+
+function fetchFolderPreviewItems(folderId) {
+  if (folderPreviewCache.has(folderId)) {
+    return Promise.resolve(folderPreviewCache.get(folderId));
+  }
+
+  return new Promise((resolve) => {
+    chrome.bookmarks.getChildren(folderId, (children) => {
+      if (chrome.runtime.lastError) {
+        folderPreviewCache.delete(folderId);
+        resolve([]);
+        return;
+      }
+
+      const previewItems = (children || [])
+        .sort((a, b) => a.index - b.index)
+        .slice(0, 9);
+
+      folderPreviewCache.set(folderId, previewItems);
+      resolve(previewItems);
+    });
+  });
+}
+
+function createFolderPreviewItem(item) {
+  const previewItem = document.createElement('div');
+  previewItem.className = 'bookmark-folder-preview-item';
+
+  if (item.url) {
+    const img = document.createElement('img');
+    img.src = resolveBookmarkIconSource(item.id, item.url);
+    img.alt = '';
+    img.setAttribute('draggable', 'false');
+    previewItem.appendChild(img);
+    return previewItem;
+  }
+
+  const icon = document.createElement('span');
+  icon.className = 'material-icons bookmark-folder-preview-folder-icon';
+  icon.textContent = 'folder';
+  previewItem.appendChild(icon);
+  return previewItem;
+}
+
+async function hydrateFolderPreview(visual, folder) {
+  const previewItems = await fetchFolderPreviewItems(folder.id);
+  if (!visual.isConnected) {
+    return;
+  }
+
+  if (!previewItems.length) {
+    visual.classList.add('is-empty-folder-preview');
+    return;
+  }
+
+  visual.textContent = '';
+  visual.classList.remove('is-empty-folder-preview');
+  visual.classList.add('has-folder-preview');
+
+  const grid = document.createElement('div');
+  grid.className = 'bookmark-folder-preview-grid';
+
+  previewItems.forEach((item) => {
+    grid.appendChild(createFolderPreviewItem(item));
+  });
+
+  visual.appendChild(grid);
+}
+
 function createFolderCard(folder, index) {
   const runtimeCreateFolderCard = S.createFolderCard;
   if (typeof runtimeCreateFolderCard === 'function' && runtimeCreateFolderCard !== createFolderCard) {
@@ -10,16 +95,73 @@ function createFolderCard(folder, index) {
   }
 
   const card = document.createElement('div');
-  card.className = 'bookmark-folder card';
+  card.className = 'bookmark-folder';
   card.dataset.id = folder.id;
   card.dataset.parentId = folder.parentId;
   card.dataset.index = index.toString();
   card.setAttribute('draggable', 'false');
 
+  const visual = document.createElement('div');
+  visual.className = 'bookmark-visual bookmark-folder-visual';
+
+  const icon = document.createElement('span');
+  icon.className = 'material-icons bookmark-folder-icon';
+  icon.textContent = 'folder';
+  visual.appendChild(icon);
+  card.appendChild(visual);
+  hydrateFolderPreview(visual, folder);
+
   const title = document.createElement('div');
   title.className = 'card-title';
   title.textContent = folder.title || '';
   card.appendChild(title);
+
+  card.addEventListener('contextmenu', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!S.bookmarkFolderContextMenu && typeof S.createBookmarkFolderContextMenu === 'function') {
+      S.bookmarkFolderContextMenu = S.createBookmarkFolderContextMenu();
+    }
+
+    if (!S.bookmarkFolderContextMenu) {
+      console.warn('bookmark folder context menu is not available');
+      return;
+    }
+
+    S.currentBookmarkFolder = card;
+
+    if (typeof S.createMenuItems === 'function') {
+      await S.createMenuItems(S.bookmarkFolderContextMenu);
+    }
+
+    const menu = S.bookmarkFolderContextMenu;
+    menu.style.display = 'block';
+    menu.style.visibility = 'hidden';
+    menu.style.left = '0';
+    menu.style.top = '0';
+
+    requestAnimationFrame(() => {
+      const menuRect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let left = event.clientX;
+      let top = event.clientY;
+
+      if (left + menuRect.width > viewportWidth) {
+        left = Math.max(5, left - menuRect.width);
+      }
+
+      if (top + menuRect.height > viewportHeight) {
+        top = Math.max(5, viewportHeight - menuRect.height - 5);
+      }
+
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.style.visibility = 'visible';
+    });
+  });
 
   card.addEventListener('click', () => {
     if (typeof S.updateBookmarksDisplay === 'function') {
@@ -36,7 +178,7 @@ function createFolderCard(folder, index) {
 function createBookmarkCreateCard() {
   const card = document.createElement('button');
   card.type = 'button';
-  card.className = 'bookmark-create-card card';
+  card.className = 'bookmark-create-card';
   card.dataset.virtualCreate = 'true';
   card.setAttribute('aria-label', '新增书签或文件夹');
   card.setAttribute('draggable', 'false');
@@ -45,11 +187,15 @@ function createBookmarkCreateCard() {
   plus.className = 'bookmark-create-icon';
   plus.textContent = '+';
 
+  const visual = document.createElement('span');
+  visual.className = 'bookmark-visual bookmark-create-visual';
+  visual.appendChild(plus);
+
   const label = document.createElement('span');
   label.className = 'bookmark-create-label';
-  label.textContent = '新增书签 / 文件夹';
+  label.textContent = '新增';
 
-  card.appendChild(plus);
+  card.appendChild(visual);
   card.appendChild(label);
 
   card.addEventListener('click', (event) => {
@@ -80,6 +226,11 @@ function displayBookmarks(bookmark) {
   const fragment = document.createDocumentFragment();
   
   let itemsToDisplay = bookmark.children || [];
+  const activeDraggedBookmarkId = S.activeDraggedBookmarkId || null;
+
+  if (activeDraggedBookmarkId) {
+    itemsToDisplay = itemsToDisplay.filter((child) => child.id !== activeDraggedBookmarkId);
+  }
   
   itemsToDisplay.sort((a, b) => a.index - b.index);
   
@@ -118,7 +269,7 @@ function displayBookmarks(bookmark) {
 function createBookmarkCard(bookmark, index) {
   const card = document.createElement('a');
   card.href = bookmark.url;
-  card.className = 'bookmark-card card';
+  card.className = 'bookmark-card';
   card.dataset.id = bookmark.id;
   card.dataset.parentId = bookmark.parentId;
   card.dataset.index = index.toString();
@@ -126,7 +277,7 @@ function createBookmarkCard(bookmark, index) {
 
   const img = document.createElement('img');
   img.className = 'w-6 h-6 mr-2';
-  img.src = `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(bookmark.url)}&size=32`;
+  img.src = resolveBookmarkIconSource(bookmark.id, bookmark.url);
   img.setAttribute('draggable', 'false');
 
   // 尝试从缓存获取颜色
@@ -155,20 +306,15 @@ function createBookmarkCard(bookmark, index) {
     localStorage.setItem(`bookmark-colors-${bookmark.id}`, JSON.stringify(defaultColors));
   };
 
-  const favicon = document.createElement('div');
-  favicon.className = 'favicon';
-  favicon.appendChild(img);
-  card.appendChild(favicon);
-
-  const content = document.createElement('div');
-  content.className = 'card-content';
+  const visual = document.createElement('div');
+  visual.className = 'bookmark-visual favicon';
+  visual.appendChild(img);
+  card.appendChild(visual);
 
   const title = document.createElement('div');
   title.className = 'card-title';
   title.textContent = bookmark.title;
-
-  content.appendChild(title);
-  card.appendChild(content);
+  card.appendChild(title);
 
   const preventNativeDrag = (event) => {
     event.preventDefault();
@@ -176,7 +322,6 @@ function createBookmarkCard(bookmark, index) {
 
   card.addEventListener('dragstart', preventNativeDrag);
   img.addEventListener('dragstart', preventNativeDrag);
-  content.addEventListener('dragstart', preventNativeDrag);
   title.addEventListener('dragstart', preventNativeDrag);
 
   card.addEventListener('contextmenu', function(event) {
@@ -188,19 +333,6 @@ function createBookmarkCard(bookmark, index) {
     } else {
       console.warn('showContextMenu is not available');
     }
-  });
-
-  // 添加鼠标悬停效果
-  card.addEventListener('mouseenter', function() {
-    this.style.transform = 'scale(1.03)';
-    this.style.boxShadow = '0 1px 1px rgba(0,0,0,0.01)';
-    this.style.backgroundColor = 'rgba(255,255,255,1)';
-  });
-
-  card.addEventListener('mouseleave', function() {
-    this.style.transform = 'scale(1)';
-    this.style.boxShadow = '';
-    this.style.backgroundColor = '';
   });
 
   // 在文件顶部添加防重复点击控制
@@ -345,4 +477,9 @@ function createBookmarkCard(bookmark, index) {
 }
 
 
-assignToScriptState({ displayBookmarks, createBookmarkCard, createFolderCard });
+assignToScriptState({
+  displayBookmarks,
+  createBookmarkCard,
+  createFolderCard,
+  invalidateFolderPreviewCache
+});

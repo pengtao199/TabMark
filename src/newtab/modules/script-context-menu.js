@@ -17,13 +17,45 @@ function stripHtml(input = '') {
 }
 
 function showConfirmDialog(message, callback) {
-  if (typeof S.showConfirmDialog === 'function') {
-    S.showConfirmDialog(message, callback);
+  const confirmDialog = document.getElementById('confirm-dialog');
+  const confirmMessage = document.getElementById('confirm-dialog-message');
+  const confirmQuickLinkMessage = document.getElementById('confirm-delete-quick-link-message');
+  const confirmButton = document.getElementById('confirm-delete-button');
+  const cancelButton = document.getElementById('cancel-delete-button');
+
+  if (!confirmDialog || !confirmMessage || !confirmButton || !cancelButton) {
+    if (window.confirm(stripHtml(message)) && typeof callback === 'function') {
+      callback();
+    }
     return;
   }
-  if (window.confirm(stripHtml(message)) && typeof callback === 'function') {
-    callback();
+
+  confirmMessage.innerHTML = message;
+  confirmMessage.style.display = 'block';
+  if (confirmQuickLinkMessage) {
+    confirmQuickLinkMessage.innerHTML = '';
+    confirmQuickLinkMessage.style.display = 'none';
   }
+
+  confirmDialog.style.display = 'block';
+
+  const cleanup = () => {
+    confirmButton.onclick = null;
+    cancelButton.onclick = null;
+  };
+
+  confirmButton.onclick = () => {
+    confirmDialog.style.display = 'none';
+    cleanup();
+    if (typeof callback === 'function') {
+      callback();
+    }
+  };
+
+  cancelButton.onclick = () => {
+    confirmDialog.style.display = 'none';
+    cleanup();
+  };
 }
 
 function deleteBookmark(bookmarkId, bookmarkTitle) {
@@ -79,6 +111,117 @@ function deleteQuickLink(item) {
   console.warn('deleteQuickLink is not available');
 }
 
+function normalizeTitle(rawTitle = '') {
+  const title = String(rawTitle).replace(/\s+/g, ' ').trim();
+  return title;
+}
+
+function stripTrailingSiteLabel(title, hostname) {
+  const cleanedTitle = normalizeTitle(title);
+  if (!cleanedTitle) {
+    return '';
+  }
+
+  const rawHost = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (!rawHost) {
+    return cleanedTitle;
+  }
+
+  const hostParts = rawHost.split('.').filter(Boolean);
+  const hostLabels = new Set();
+  if (hostParts.length >= 1) {
+    hostLabels.add(hostParts[0]);
+  }
+  if (hostParts.length >= 2) {
+    hostLabels.add(hostParts[hostParts.length - 2]);
+  }
+  hostLabels.add(rawHost);
+
+  const segments = cleanedTitle
+    .split(/\s*[-|·•:：丨｜]\s*/g)
+    .map((segment) => normalizeTitle(segment))
+    .filter(Boolean);
+
+  while (segments.length > 1) {
+    const tail = segments[segments.length - 1].toLowerCase();
+    const normalizedTail = tail.replace(/^www\./, '').replace(/\s+/g, '');
+    const matchesHost = Array.from(hostLabels).some((label) => {
+      const normalizedLabel = label.toLowerCase().replace(/\s+/g, '');
+      return normalizedLabel && (normalizedTail === normalizedLabel || normalizedTail.includes(normalizedLabel));
+    });
+
+    if (!matchesHost) {
+      break;
+    }
+
+    segments.pop();
+  }
+
+  return segments.join(' - ') || cleanedTitle;
+}
+
+function cleanFetchedBookmarkTitle(rawTitle, hostname) {
+  let nextTitle = stripTrailingSiteLabel(rawTitle, hostname);
+  const noisePatterns = [
+    /\s*(官方网站|官网首页|官网|首页|主页|欢迎访问)\s*$/i,
+    /\s*(免费下载|最新下载|高清在线|在线观看|完整版)\s*$/i,
+    /\s*(登录|注册|注册登录|账号登录|立即下载|立即体验)\s*$/i,
+  ];
+
+  noisePatterns.forEach((pattern) => {
+    nextTitle = nextTitle.replace(pattern, '').trim();
+  });
+
+  return normalizeTitle(nextTitle) || normalizeTitle(rawTitle);
+}
+
+async function fetchBookmarkTitleFromUrl(rawUrl) {
+  if (!rawUrl) {
+    throw new Error('missing-url');
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch (error) {
+    throw new Error('invalid-url');
+  }
+
+  const response = await fetch(parsedUrl.toString(), {
+    method: 'GET',
+    credentials: 'omit',
+    cache: 'no-store',
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    throw new Error(`http-${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/html')) {
+    throw new Error('not-html');
+  }
+
+  const html = await response.text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const docTitle = cleanFetchedBookmarkTitle(doc.querySelector('title')?.textContent || '', parsedUrl.hostname);
+
+  if (docTitle) {
+    return docTitle;
+  }
+
+  const ogTitle = cleanFetchedBookmarkTitle(
+    doc.querySelector('meta[property="og:title"], meta[name="og:title"]')?.getAttribute('content') || '',
+    parsedUrl.hostname,
+  );
+  if (ogTitle) {
+    return ogTitle;
+  }
+
+  throw new Error('missing-title');
+}
+
 function openEditDialog(item) {
   if (!item?.id) {
     return;
@@ -88,6 +231,7 @@ function openEditDialog(item) {
   const editForm = document.getElementById('edit-form');
   const editNameInput = document.getElementById('edit-name');
   const editUrlInput = document.getElementById('edit-url');
+  const refreshTitleButton = document.getElementById('refresh-edit-title-button');
   const cancelButton = editDialog?.querySelector('.cancel-button');
   const closeButton = editDialog?.querySelector('.close-button');
 
@@ -103,6 +247,34 @@ function openEditDialog(item) {
   const closeEditDialog = () => {
     editDialog.style.display = 'none';
   };
+
+  if (refreshTitleButton) {
+    refreshTitleButton.disabled = false;
+    refreshTitleButton.classList.remove('is-refreshing');
+    refreshTitleButton.onclick = async () => {
+      const currentUrl = editUrlInput.value.trim();
+      if (!currentUrl) {
+        Utilities.showToast('请先填写链接');
+        editUrlInput.focus();
+        return;
+      }
+
+      refreshTitleButton.disabled = true;
+      refreshTitleButton.classList.add('is-refreshing');
+
+      try {
+        const fetchedTitle = await fetchBookmarkTitleFromUrl(currentUrl);
+        editNameInput.value = fetchedTitle;
+        Utilities.showToast('已根据链接更新名称');
+      } catch (error) {
+        console.error('Error refreshing bookmark title:', error);
+        Utilities.showToast('未能从当前链接获取标题');
+      } finally {
+        refreshTitleButton.disabled = false;
+        refreshTitleButton.classList.remove('is-refreshing');
+      }
+    };
+  }
 
   editForm.onsubmit = async (event) => {
     event.preventDefault();
@@ -655,6 +827,6 @@ assignToScriptState({
   confirmBookmarkDeletion,
   confirmQuickLinkDeletion,
   clearDeleteStates,
-  showConfirmDialog: S.showConfirmDialog,
+  showConfirmDialog,
   clearAllStates: S.clearAllStates
 });

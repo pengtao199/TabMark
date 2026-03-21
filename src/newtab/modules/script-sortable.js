@@ -196,6 +196,7 @@ function resetDragState() {
   }
   clearBreadcrumbHighlight(dragState.hoverBreadcrumb);
   document.body.classList.remove('is-bookmark-dragging');
+  S.activeDraggedBookmarkId = null;
 
   dragState.draggedElement = null;
   dragState.draggedId = null;
@@ -292,6 +293,9 @@ async function refreshBookmarkViews(parentIds = [], refreshParentId = null, opti
   if (typeof S.invalidateBookmarkCache === 'function') {
     S.invalidateBookmarkCache(parentIds);
   }
+  if (typeof S.invalidateFolderPreviewCache === 'function') {
+    S.invalidateFolderPreviewCache(parentIds);
+  }
 
   if (!skipTreeRefresh && typeof S.refreshBookmarkTree === 'function') {
     await S.refreshBookmarkTree();
@@ -358,7 +362,7 @@ function updateDraggedTransform() {
 function createDragPlaceholder(draggedElement) {
   const rect = draggedElement.getBoundingClientRect();
   const placeholder = document.createElement('div');
-  placeholder.className = 'bookmark-drop-placeholder card';
+  placeholder.className = 'bookmark-drop-placeholder';
   placeholder.style.width = `${rect.width}px`;
   placeholder.style.height = `${rect.height}px`;
   placeholder.dataset.dragPlaceholder = 'true';
@@ -928,6 +932,7 @@ function registerCardDraggable(cardElement, bookmarksList) {
         const startPoint = capturedPoint || getEventClientPoint(event);
         dragState.draggedElement = event.target;
         dragState.draggedId = event.target.dataset.id || null;
+        S.activeDraggedBookmarkId = dragState.draggedId;
         dragState.sourceParentId = event.target.dataset.parentId || bookmarksList.dataset.parentId || '1';
         dragState.currentParentId = bookmarksList.dataset.parentId || '1';
         dragState.pointerX = startPoint.x ?? rect.left + (rect.width / 2);
@@ -996,6 +1001,12 @@ function setupMainBookmarksInteractions(bookmarksList) {
   if (!preserveDragSession) {
     cleanupMainPanelInteractables();
     resetDragState();
+  }
+
+  if (preserveDragSession && dragState.draggedId) {
+    const duplicateCard = Array.from(bookmarksList.querySelectorAll('.bookmark-card, .bookmark-folder'))
+      .find((element) => element.dataset.id === dragState.draggedId);
+    duplicateCard?.remove();
   }
 
   const cards = Array.from(bookmarksList.querySelectorAll('.bookmark-card, .bookmark-folder'));

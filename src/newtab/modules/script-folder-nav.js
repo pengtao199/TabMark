@@ -42,9 +42,9 @@ async function initDefaultFoldersTabs() {
   }
 
   // 获取默认文件夹列表
-  const data = await chrome.storage.sync.get([STORAGE_KEYS.DEFAULT_FOLDERS, STORAGE_KEYS.LAST_VIEWED_FOLDER]);
+  const data = await chrome.storage.sync.get([STORAGE_KEYS.DEFAULT_FOLDERS]);
   let defaultFolders = data[STORAGE_KEYS.DEFAULT_FOLDERS]?.items || [];
-  const lastViewedFolder = data[STORAGE_KEYS.LAST_VIEWED_FOLDER];
+  await chrome.storage.local.remove([STORAGE_KEYS.LAST_VIEWED_FOLDER, 'lastViewedTime']);
   
   // 确保文件夹按 order 排序
   defaultFolders = defaultFolders.sort((a, b) => a.order - b.order);
@@ -71,27 +71,13 @@ async function initDefaultFoldersTabs() {
     S.displayBookmarkCategories(S.bookmarkTreeNodes[0].children, 0, null, '1');
   });
 
-  // 如果有默认文件夹，激活第一个或上次访问的文件夹
+  // 默认始终进入根目录，底部默认文件夹标签只作为快捷切换入口
   if (defaultFolders.length > 0) {
-    let folderToActivate;
-    
-    // 检查上次访问的文件夹是否在默认文件夹列表中
-    if (lastViewedFolder && defaultFolders.some(f => f.id === lastViewedFolder)) {
-      folderToActivate = lastViewedFolder;
-    } else {
-      // 否则使用第一个默认文件夹
-      folderToActivate = defaultFolders[0].id;
-    }
-
-    // 激活选中的文件夹
-    const activeTab = document.querySelector(`.folder-tab[data-folder-id="${folderToActivate}"]`);
-    if (activeTab) {
-      activeTab.classList.add('active');
-      activeTab.style.transform = 'scale(1.2)';
-    }
-
-    // 切换到选中的文件夹
-    await switchToFolder(folderToActivate);
+    document.querySelectorAll('.folder-tab').forEach((tab) => {
+      tab.classList.remove('active');
+      tab.style.transform = 'scale(1)';
+    });
+    await switchToFolder('1');
   } else {
     // 当没有默认文件夹时，切换到根文件夹或其他指定文件夹
     await switchToFolder('1'); // '1' 是根文件夹的 ID
@@ -419,8 +405,14 @@ function updateFolderName(bookmarkId) {
       }
     });
 
-    folderNameElement.innerHTML = breadcrumbHtml;
+    folderNameElement.innerHTML = `
+      <div class="folder-breadcrumbs">${breadcrumbHtml}</div>
+      <button type="button" class="breadcrumb-refresh-button" aria-label="刷新图标" title="刷新图标">
+        <span class="material-icons">refresh</span>
+      </button>
+    `;
     addBreadcrumbClickListeners();
+    addBreadcrumbRefreshListener();
   }).catch(error => {
     if (requestToken !== folderNameRequestToken) {
       return;
@@ -439,6 +431,21 @@ function addBreadcrumbClickListeners() {
       const folderId = this.dataset.folderId;
       navigateToPath(folderId);
     });
+  });
+}
+
+function addBreadcrumbRefreshListener() {
+  const refreshButton = document.querySelector('.breadcrumb-refresh-button');
+  if (!refreshButton) {
+    return;
+  }
+
+  refreshButton.addEventListener('click', () => {
+    if (typeof S.refreshVisibleBookmarkIcons === 'function') {
+      S.refreshVisibleBookmarkIcons().catch((error) => {
+        console.error('Error refreshing bookmark icons:', error);
+      });
+    }
   });
 }
 

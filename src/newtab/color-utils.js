@@ -147,12 +147,21 @@ export function applyColors(card, colors) {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const adjustedPrimary = adjustColor(colors.primary[0], colors.primary[1], colors.primary[2]);
   const adjustedSecondary = adjustColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
-  const opacity = isDark ? '0.1' : '0.06';
+  const surfaceOpacity = isDark ? '0.16' : '0.12';
+  const borderOpacity = isDark ? '0.2' : '0.08';
+  const shadowOpacity = isDark ? '0.22' : '0.14';
+  const iconSurface = card.querySelector('.bookmark-visual');
 
-  card.style.background = `linear-gradient(135deg, 
-    rgba(${adjustedPrimary.r}, ${adjustedPrimary.g}, ${adjustedPrimary.b}, ${opacity}), 
-    rgba(${adjustedSecondary.r}, ${adjustedSecondary.g}, ${adjustedSecondary.b}, ${opacity}))`;
-  card.style.border = `1px solid rgba(${adjustedPrimary.r}, ${adjustedPrimary.g}, ${adjustedPrimary.b}, ${isDark ? '0.1' : '0.01'})`;
+  card.style.background = 'transparent';
+  card.style.border = '0';
+
+  if (iconSurface) {
+    iconSurface.style.background = `linear-gradient(135deg,
+      rgba(${adjustedPrimary.r}, ${adjustedPrimary.g}, ${adjustedPrimary.b}, ${surfaceOpacity}),
+      rgba(${adjustedSecondary.r}, ${adjustedSecondary.g}, ${adjustedSecondary.b}, ${surfaceOpacity}))`;
+    iconSurface.style.border = `1px solid rgba(${adjustedPrimary.r}, ${adjustedPrimary.g}, ${adjustedPrimary.b}, ${borderOpacity})`;
+    iconSurface.style.boxShadow = `0 14px 28px rgba(${adjustedPrimary.r}, ${adjustedPrimary.g}, ${adjustedPrimary.b}, ${shadowOpacity})`;
+  }
 }
 
 export function updateBookmarkColors(bookmark, img, card) {
