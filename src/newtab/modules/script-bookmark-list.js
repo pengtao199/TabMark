@@ -55,8 +55,8 @@ function createBookmarkCreateCard() {
   card.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (typeof S.openCreateBookmarkDialog === 'function') {
-      S.openCreateBookmarkDialog('bookmark');
+    if (typeof S.openCreateBookmarkPicker === 'function') {
+      S.openCreateBookmarkPicker(card);
     }
   });
 

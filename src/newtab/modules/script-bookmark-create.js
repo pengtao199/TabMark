@@ -9,6 +9,7 @@ const Utilities = createUtilities(getLocalizedMessage);
 
 let currentCreateMode = 'bookmark';
 let createSubmissionInFlight = false;
+let createPickerCleanup = null;
 
 function getCreateDialogElements() {
   return {
@@ -86,7 +87,17 @@ function closeCreateBookmarkDialog() {
   resetCreateBookmarkForm();
 }
 
+function closeCreateBookmarkPicker() {
+  if (!createPickerCleanup) {
+    return;
+  }
+
+  createPickerCleanup();
+  createPickerCleanup = null;
+}
+
 function openCreateBookmarkDialog(mode = 'bookmark') {
+  closeCreateBookmarkPicker();
   const { dialog, titleInput, submitButton } = getCreateDialogElements();
   if (!dialog) {
     return;
@@ -101,6 +112,86 @@ function openCreateBookmarkDialog(mode = 'bookmark') {
   window.requestAnimationFrame(() => {
     titleInput?.focus();
   });
+}
+
+function createPickerAction(label, description, mode) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'create-bookmark-picker-action';
+  button.dataset.createAction = mode;
+
+  const title = document.createElement('span');
+  title.className = 'create-bookmark-picker-action-title';
+  title.textContent = label;
+
+  const detail = document.createElement('span');
+  detail.className = 'create-bookmark-picker-action-detail';
+  detail.textContent = description;
+
+  button.appendChild(title);
+  button.appendChild(detail);
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeCreateBookmarkPicker();
+    openCreateBookmarkDialog(mode);
+  });
+
+  return button;
+}
+
+function openCreateBookmarkPicker(anchorElement) {
+  closeCreateBookmarkPicker();
+
+  if (!anchorElement) {
+    openCreateBookmarkDialog('bookmark');
+    return;
+  }
+
+  const rect = anchorElement.getBoundingClientRect();
+  const picker = document.createElement('div');
+  picker.className = 'create-bookmark-picker';
+  picker.setAttribute('role', 'menu');
+
+  picker.appendChild(createPickerAction('新增书签', '添加一个链接到当前目录', 'bookmark'));
+  picker.appendChild(createPickerAction('新增文件夹', '在当前目录创建一个文件夹', 'folder'));
+
+  const closeOnPointerDown = (event) => {
+    if (!picker.contains(event.target) && event.target !== anchorElement && !anchorElement.contains(event.target)) {
+      closeCreateBookmarkPicker();
+    }
+  };
+
+  const closeOnEscape = (event) => {
+    if (event.key === 'Escape') {
+      closeCreateBookmarkPicker();
+    }
+  };
+
+  document.body.appendChild(picker);
+
+  const pickerRect = picker.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const left = Math.min(
+    Math.max(16, rect.left + (rect.width / 2) - (pickerRect.width / 2)),
+    viewportWidth - pickerRect.width - 16
+  );
+  const top = rect.top - pickerRect.height - 12 >= 16
+    ? rect.top - pickerRect.height - 12
+    : Math.min(viewportHeight - pickerRect.height - 16, rect.bottom + 12);
+
+  picker.style.left = `${left}px`;
+  picker.style.top = `${top}px`;
+
+  document.addEventListener('pointerdown', closeOnPointerDown, true);
+  document.addEventListener('keydown', closeOnEscape, true);
+
+  createPickerCleanup = () => {
+    picker.remove();
+    document.removeEventListener('pointerdown', closeOnPointerDown, true);
+    document.removeEventListener('keydown', closeOnEscape, true);
+  };
 }
 
 function isValidBookmarkUrl(url) {
@@ -229,6 +320,8 @@ if (document.readyState === 'loading') {
 }
 
 assignToScriptState({
+  openCreateBookmarkPicker,
+  closeCreateBookmarkPicker,
   openCreateBookmarkDialog,
   closeCreateBookmarkDialog,
   setCreateMode

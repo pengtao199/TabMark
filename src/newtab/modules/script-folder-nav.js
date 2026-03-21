@@ -4,6 +4,7 @@ import { getScriptState, assignToScriptState } from './script-runtime-bridge.js'
 
 const S = getScriptState();
 const fallbackBookmarksCache = new Map();
+let folderNameRequestToken = 0;
 function getCacheEntry(parentId) {
   if (S.bookmarksCache?.get) {
     return S.bookmarksCache.get(parentId);
@@ -274,6 +275,7 @@ function updateBookmarksDisplay(parentId, movedItemId, newIndex) {
       // 如果有缓存且不是移动操作，直接使用缓存数据
       console.log('Using cached bookmarks for:', parentId);
       S.displayBookmarks({ id: parentId, children: cached.bookmarks });
+      updateFolderName(parentId);
       resolve();
       return;
     }
@@ -347,9 +349,51 @@ function getBookmarkPath(bookmarkId) {
   });
 }
 
+function getBookmarkTrail(bookmarkId) {
+  return new Promise((resolve, reject) => {
+    getBookmarksBarName().then(bookmarksBarName => {
+      function getParentRecursive(id, trail = []) {
+        chrome.bookmarks.get(id, function(results) {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+            return;
+          }
+
+          if (results && results[0]) {
+            trail.unshift({
+              id: results[0].id,
+              title: results[0].title
+            });
+
+            if (results[0].parentId && results[0].parentId !== '0') {
+              getParentRecursive(results[0].parentId, trail);
+            } else {
+              if (trail[0]?.id !== '1') {
+                trail.unshift({
+                  id: '1',
+                  title: bookmarksBarName
+                });
+              } else if (trail[0]?.title !== bookmarksBarName) {
+                trail[0].title = bookmarksBarName;
+              }
+
+              resolve(trail);
+            }
+          } else {
+            reject(new Error('Bookmark not found'));
+          }
+        });
+      }
+
+      getParentRecursive(bookmarkId);
+    });
+  });
+}
+
 function updateFolderName(bookmarkId) {
   const folderNameElement = document.getElementById('folder-name');
   if (!folderNameElement) return;
+  const requestToken = ++folderNameRequestToken;
 
   // 清除所有内容
   folderNameElement.innerHTML = '';
@@ -361,14 +405,16 @@ function updateFolderName(bookmarkId) {
   }
 
   // 尝试获取书签路径
-  getBookmarkPath(bookmarkId).then(pathArray => {
-    let breadcrumbHtml = '';
-    let currentPath = '';
+  getBookmarkTrail(bookmarkId).then(trail => {
+    if (requestToken !== folderNameRequestToken) {
+      return;
+    }
 
-    pathArray.forEach((part, index) => {
-      currentPath += (index > 0 ? ' > ' : '') + part;
-      breadcrumbHtml += `<span class="breadcrumb-item" data-path="${currentPath}">${getLocalizedMessage(part)}</span>`;
-      if (index < pathArray.length - 1) {
+    let breadcrumbHtml = '';
+
+    trail.forEach((entry, index) => {
+      breadcrumbHtml += `<span class="breadcrumb-item" data-folder-id="${entry.id}">${getLocalizedMessage(entry.title)}</span>`;
+      if (index < trail.length - 1) {
         breadcrumbHtml += '<span class="breadcrumb-separator">&gt;</span>';
       }
     });
@@ -376,6 +422,10 @@ function updateFolderName(bookmarkId) {
     folderNameElement.innerHTML = breadcrumbHtml;
     addBreadcrumbClickListeners();
   }).catch(error => {
+    if (requestToken !== folderNameRequestToken) {
+      return;
+    }
+
     console.warn('Error updating folder name:', error);
     // 设置默认文本，并确保它被本地化
     folderNameElement.textContent = getLocalizedMessage('bookmarks');
@@ -386,50 +436,23 @@ function addBreadcrumbClickListeners() {
   const breadcrumbItems = document.querySelectorAll('.breadcrumb-item');
   breadcrumbItems.forEach(item => {
     item.addEventListener('click', function () {
-      const path = this.dataset.path;
-      navigateToPath(path);
+      const folderId = this.dataset.folderId;
+      navigateToPath(folderId);
     });
   });
 }
 
 function navigateToPath(path) {
-  const pathParts = path.split(' > ');
-  
-  // 获取书签栏的名称
-  getBookmarksBarName().then(bookmarksBarName => {
-    let currentId = '1'; // 默认从根目录开始
-    let startIndex = 0;
-
-    // 如果路径不是从书签栏开始，我们需要找到正确的起始点
-    if (pathParts[0] !== bookmarksBarName) {
-      chrome.bookmarks.search({title: pathParts[0]}, function(results) {
-        if (results.length > 0) {
-          currentId = results[0].id;
-        }
-        navigateRecursive(startIndex);
-      });
-    } else {
-      startIndex = 1; // 如果从书签栏开始，跳过第一个元素
-      navigateRecursive(startIndex);
-    }
-
-    function navigateRecursive(index) {
-      if (index >= pathParts.length) {
-        updateBookmarksDisplay(currentId);
-        return;
-      }
-
-      chrome.bookmarks.getChildren(currentId, function(children) {
-        const matchingChild = children.find(child => child.title === pathParts[index]);
-        if (matchingChild) {
-          currentId = matchingChild.id;
-          navigateRecursive(index + 1);
-        } else {
-          updateBookmarksDisplay(currentId);
-        }
-      });
-    }
-  });
+  const folderId = path || '1';
+  Promise.resolve()
+    .then(() => updateBookmarksDisplay(folderId))
+    .then(() => {
+      updateFolderName(folderId);
+      selectSidebarFolder(folderId);
+    })
+    .catch((error) => {
+      console.error('Error navigating to breadcrumb folder:', error);
+    });
 }
 
 function updateSidebarDefaultBookmarkIndicator() {

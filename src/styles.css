@@ -100,6 +100,17 @@ main.flex-1 {
   background-color: transparent;
 }
 
+.breadcrumb-item.is-breadcrumb-drop-hover {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.breadcrumb-item.is-breadcrumb-drop-target {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #047857;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.16);
+}
+
 #categories-list li {
   user-select: none;
 }
@@ -161,6 +172,51 @@ main.flex-1 {
 .bookmark-create-label {
   font-size: 13px;
   font-weight: 600;
+}
+
+.create-bookmark-picker {
+  position: fixed;
+  z-index: 1006;
+  min-width: 240px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.create-bookmark-picker-action {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.create-bookmark-picker-action:hover {
+  background: rgba(16, 185, 129, 0.08);
+  transform: translateY(-1px);
+}
+
+.create-bookmark-picker-action-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.create-bookmark-picker-action-detail {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
 }
 
 .bookmark-card,
@@ -315,6 +371,17 @@ body.is-bookmark-dragging * {
   box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.18);
 }
 
+[data-theme="dark"] .breadcrumb-item.is-breadcrumb-drop-hover {
+  background-color: rgba(52, 211, 153, 0.16);
+  color: #d1fae5;
+}
+
+[data-theme="dark"] .breadcrumb-item.is-breadcrumb-drop-target {
+  background-color: rgba(52, 211, 153, 0.24);
+  color: #d1fae5;
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.18);
+}
+
 [data-theme="dark"] .bookmark-create-card {
   background: rgba(36, 36, 36, 0.88);
   border-color: rgba(52, 211, 153, 0.5);
@@ -324,6 +391,24 @@ body.is-bookmark-dragging * {
 [data-theme="dark"] .bookmark-create-card:hover {
   background: rgba(31, 41, 55, 1);
   border-color: rgba(52, 211, 153, 0.95);
+}
+
+[data-theme="dark"] .create-bookmark-picker {
+  background: rgba(31, 41, 55, 0.96);
+  border-color: rgba(75, 85, 99, 0.8);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+}
+
+[data-theme="dark"] .create-bookmark-picker-action:hover {
+  background: rgba(52, 211, 153, 0.14);
+}
+
+[data-theme="dark"] .create-bookmark-picker-action-title {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .create-bookmark-picker-action-detail {
+  color: #9ca3af;
 }
 
 [data-theme="dark"] .bookmark-card:hover {

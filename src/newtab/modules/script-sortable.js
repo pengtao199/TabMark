@@ -24,6 +24,10 @@ const dragState = {
   hoverFolder: null,
   lockedFolder: null,
   hoverTimer: null,
+  folderNavigateTimer: null,
+  hoverBreadcrumb: null,
+  breadcrumbTimer: null,
+  navigatingFolderId: null,
   moved: false,
   placeholderElement: null,
   previewElement: null,
@@ -31,6 +35,8 @@ const dragState = {
 };
 
 const FOLDER_HOVER_LOCK_MS = 220;
+const FOLDER_AUTO_NAV_MS = 420;
+const BREADCRUMB_HOVER_NAV_MS = 280;
 const FOLDER_CENTER_RATIO = 0.72;
 const DRAG_CLICK_SUPPRESS_MS = 250;
 const ROW_GROUP_GAP = 28;
@@ -124,6 +130,24 @@ function clearHoverTimer() {
   dragState.hoverTimer = null;
 }
 
+function clearFolderNavigateTimer() {
+  if (!dragState.folderNavigateTimer) {
+    return;
+  }
+
+  clearTimeout(dragState.folderNavigateTimer);
+  dragState.folderNavigateTimer = null;
+}
+
+function clearBreadcrumbTimer() {
+  if (!dragState.breadcrumbTimer) {
+    return;
+  }
+
+  clearTimeout(dragState.breadcrumbTimer);
+  dragState.breadcrumbTimer = null;
+}
+
 function clearFolderHighlight(folder) {
   if (!folder) {
     return;
@@ -144,12 +168,33 @@ function applyFolderHighlight(folder, variant) {
   folder.classList.toggle('is-invalid-drop-target', variant === 'invalid');
 }
 
+function clearBreadcrumbHighlight(breadcrumb) {
+  if (!breadcrumb) {
+    return;
+  }
+
+  breadcrumb.classList.remove('is-breadcrumb-drop-hover');
+  breadcrumb.classList.remove('is-breadcrumb-drop-target');
+}
+
+function applyBreadcrumbHighlight(breadcrumb, variant) {
+  if (!breadcrumb) {
+    return;
+  }
+
+  breadcrumb.classList.toggle('is-breadcrumb-drop-hover', variant === 'hover');
+  breadcrumb.classList.toggle('is-breadcrumb-drop-target', variant === 'locked');
+}
+
 function resetDragState() {
   clearHoverTimer();
+  clearFolderNavigateTimer();
+  clearBreadcrumbTimer();
   clearFolderHighlight(dragState.hoverFolder);
   if (dragState.lockedFolder && dragState.lockedFolder !== dragState.hoverFolder) {
     clearFolderHighlight(dragState.lockedFolder);
   }
+  clearBreadcrumbHighlight(dragState.hoverBreadcrumb);
   document.body.classList.remove('is-bookmark-dragging');
 
   dragState.draggedElement = null;
@@ -162,6 +207,8 @@ function resetDragState() {
   dragState.grabOffsetY = 0;
   dragState.hoverFolder = null;
   dragState.lockedFolder = null;
+  dragState.hoverBreadcrumb = null;
+  dragState.navigatingFolderId = null;
   dragState.moved = false;
   dragState.placeholderElement = null;
   dragState.previewElement = null;
@@ -394,6 +441,22 @@ function getFolderUnderPointer() {
   return folder;
 }
 
+function getBreadcrumbUnderPointer() {
+  if (!dragState.draggedElement) {
+    return null;
+  }
+
+  const hovered = document.elementFromPoint(dragState.pointerX, dragState.pointerY);
+  const breadcrumb = hovered?.closest?.('.breadcrumb-item[data-folder-id]') || null;
+  const targetFolderId = breadcrumb?.dataset?.folderId || null;
+
+  if (!breadcrumb || !targetFolderId || targetFolderId === dragState.currentParentId) {
+    return null;
+  }
+
+  return breadcrumb;
+}
+
 function scheduleFolderLock(targetFolder) {
   if (!targetFolder?.dataset?.id) {
     return;
@@ -425,6 +488,24 @@ function scheduleFolderLock(targetFolder) {
 
     dragState.lockedFolder = targetFolder;
     applyFolderHighlight(targetFolder, isInvalid ? 'invalid' : 'locked');
+
+    clearFolderNavigateTimer();
+    if (!isInvalid) {
+      dragState.folderNavigateTimer = setTimeout(async () => {
+        if (
+          dragState.lockedFolder !== targetFolder ||
+          !isPointerInsideFolderCenter(targetFolder) ||
+          dragState.navigatingFolderId
+        ) {
+          return;
+        }
+
+        clearFolderHighlight(targetFolder);
+        dragState.hoverFolder = null;
+        dragState.lockedFolder = null;
+        await navigateDragToFolder(targetFolder.dataset.id);
+      }, FOLDER_AUTO_NAV_MS);
+    }
   }, FOLDER_HOVER_LOCK_MS);
 }
 
@@ -440,6 +521,24 @@ function releaseLockedFolderIfNeeded(currentTargetFolder) {
 
   clearFolderHighlight(lockedFolder);
   dragState.lockedFolder = null;
+  clearFolderNavigateTimer();
+}
+
+function clearFolderTargetState() {
+  clearHoverTimer();
+  clearFolderNavigateTimer();
+  clearFolderHighlight(dragState.hoverFolder);
+  if (dragState.lockedFolder && dragState.lockedFolder !== dragState.hoverFolder) {
+    clearFolderHighlight(dragState.lockedFolder);
+  }
+  dragState.hoverFolder = null;
+  dragState.lockedFolder = null;
+}
+
+function clearBreadcrumbTargetState() {
+  clearBreadcrumbTimer();
+  clearBreadcrumbHighlight(dragState.hoverBreadcrumb);
+  dragState.hoverBreadcrumb = null;
 }
 
 function updateFolderTarget() {
@@ -464,6 +563,93 @@ function updateFolderTarget() {
   }
 
   scheduleFolderLock(targetFolder);
+}
+
+async function navigateDragToFolder(folderId) {
+  if (!folderId || dragState.navigatingFolderId === folderId) {
+    return;
+  }
+
+  dragState.navigatingFolderId = folderId;
+  clearFolderTargetState();
+  dragState.placeholderElement?.remove();
+  dragState.placeholderElement = null;
+
+  S.skipBookmarkRenderTransition = true;
+  try {
+    if (typeof S.updateBookmarksDisplay === 'function') {
+      await S.updateBookmarksDisplay(folderId);
+    }
+    if (typeof S.updateFolderName === 'function') {
+      S.updateFolderName(folderId);
+    }
+    if (typeof S.selectSidebarFolder === 'function') {
+      S.selectSidebarFolder(folderId);
+    }
+    dragState.currentParentId = folderId;
+  } finally {
+    S.skipBookmarkRenderTransition = false;
+    dragState.navigatingFolderId = null;
+  }
+
+  const bookmarksList = document.getElementById('bookmarks-list');
+  if (!bookmarksList || !dragState.draggedElement) {
+    return;
+  }
+
+  if (!dragState.placeholderElement) {
+    dragState.placeholderElement = createDragPlaceholder(dragState.previewElement || dragState.draggedElement);
+    const createCard = bookmarksList.querySelector('.bookmark-create-card');
+    bookmarksList.insertBefore(dragState.placeholderElement, createCard || null);
+  }
+
+  updatePlaceholderPosition(bookmarksList);
+  updateDraggedTransform();
+}
+
+function scheduleBreadcrumbNavigation(targetBreadcrumb) {
+  const targetFolderId = targetBreadcrumb?.dataset?.folderId;
+  if (!targetFolderId) {
+    return;
+  }
+
+  if (dragState.hoverBreadcrumb?.dataset?.folderId === targetFolderId) {
+    return;
+  }
+
+  clearBreadcrumbTimer();
+  clearBreadcrumbHighlight(dragState.hoverBreadcrumb);
+
+  dragState.hoverBreadcrumb = targetBreadcrumb;
+  applyBreadcrumbHighlight(targetBreadcrumb, 'hover');
+
+  dragState.breadcrumbTimer = setTimeout(async () => {
+    if (dragState.hoverBreadcrumb !== targetBreadcrumb || !dragState.draggedId) {
+      return;
+    }
+
+    applyBreadcrumbHighlight(targetBreadcrumb, 'locked');
+    await navigateDragToFolder(targetFolderId);
+    if (dragState.hoverBreadcrumb === targetBreadcrumb) {
+      clearBreadcrumbHighlight(targetBreadcrumb);
+      dragState.hoverBreadcrumb = null;
+    }
+  }, BREADCRUMB_HOVER_NAV_MS);
+}
+
+function updateBreadcrumbTarget() {
+  const targetBreadcrumb = getBreadcrumbUnderPointer();
+
+  if (!targetBreadcrumb) {
+    clearBreadcrumbTargetState();
+    return;
+  }
+
+  if (dragState.navigatingFolderId === targetBreadcrumb.dataset.folderId) {
+    return;
+  }
+
+  scheduleBreadcrumbNavigation(targetBreadcrumb);
 }
 
 function groupItemsIntoRows(items) {
@@ -640,7 +826,7 @@ async function handleMainPanelDrop(event, bookmarksList) {
 
       if (invalidTarget) {
         Utilities.showToast('不能将文件夹拖入自身或其子文件夹');
-        await refreshBookmarkViews([currentParentId], null, currentParentId);
+        await refreshBookmarkViews([currentParentId], currentParentId);
       } else {
         const targetIndex = await getFolderInsertIndex(targetFolderId);
         await moveBookmark(itemId, targetFolderId, targetIndex, {
@@ -772,8 +958,13 @@ function registerCardDraggable(cardElement, bookmarksList) {
         }
 
         updateDraggedTransform();
-        updateFolderTarget();
-        if (!dragState.lockedFolder) {
+        updateBreadcrumbTarget();
+        if (dragState.hoverBreadcrumb || dragState.navigatingFolderId) {
+          clearFolderTargetState();
+        } else {
+          updateFolderTarget();
+        }
+        if (!dragState.lockedFolder && !dragState.hoverBreadcrumb && !dragState.navigatingFolderId) {
           updatePlaceholderPosition(bookmarksList);
         }
       },
@@ -801,13 +992,28 @@ function registerCardDraggable(cardElement, bookmarksList) {
 }
 
 function setupMainBookmarksInteractions(bookmarksList) {
-  cleanupMainPanelInteractables();
-  resetDragState();
+  const preserveDragSession = Boolean(dragState.draggedElement && dragState.previewElement);
+  if (!preserveDragSession) {
+    cleanupMainPanelInteractables();
+    resetDragState();
+  }
 
   const cards = Array.from(bookmarksList.querySelectorAll('.bookmark-card, .bookmark-folder'));
   cards.forEach((card) => {
     registerCardDraggable(card, bookmarksList);
   });
+
+  if (preserveDragSession) {
+    dragState.currentParentId = bookmarksList.dataset.parentId || dragState.currentParentId;
+    if (!dragState.placeholderElement || !bookmarksList.contains(dragState.placeholderElement)) {
+      dragState.placeholderElement?.remove();
+      dragState.placeholderElement = createDragPlaceholder(dragState.previewElement || dragState.draggedElement);
+      const createCard = bookmarksList.querySelector('.bookmark-create-card');
+      bookmarksList.insertBefore(dragState.placeholderElement, createCard || null);
+    }
+    updatePlaceholderPosition(bookmarksList);
+    updateDraggedTransform();
+  }
 }
 
 function setupCategorySortable(container) {
