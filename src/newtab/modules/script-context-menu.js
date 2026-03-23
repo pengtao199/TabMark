@@ -116,6 +116,18 @@ function normalizeTitle(rawTitle = '') {
   return title;
 }
 
+function looksLikeDescriptorSegment(segment = '') {
+  const normalized = normalizeTitle(segment).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /(largest|official|homepage|home page|library|open[- ]source|platform|community|download|stream|watch|learn|design|tool|tools|resource|resources|marketplace|gallery|collection|guide|docs|documentation|catalog|directory)/i.test(normalized) ||
+    /(官网|官方网站|官网首页|首页|主页|欢迎访问|免费下载|最新下载|高清在线|在线观看|完整版|立即下载|立即体验|登录|注册|账号登录|资源库|设计资源|素材库|工具库|社区|文档|指南|教程|合集|大全|导航)/i.test(normalized)
+  );
+}
+
 function stripTrailingSiteLabel(title, hostname) {
   const cleanedTitle = normalizeTitle(title);
   if (!cleanedTitle) {
@@ -138,7 +150,7 @@ function stripTrailingSiteLabel(title, hostname) {
   hostLabels.add(rawHost);
 
   const segments = cleanedTitle
-    .split(/\s*[-|·•:：丨｜]\s*/g)
+    .split(/\s*[-_|·•:：丨｜/\\]+\s*/g)
     .map((segment) => normalizeTitle(segment))
     .filter(Boolean);
 
@@ -157,6 +169,18 @@ function stripTrailingSiteLabel(title, hostname) {
     segments.pop();
   }
 
+  if (segments.length > 1) {
+    const firstSegment = segments[0];
+    const trailingText = segments.slice(1).join(' - ');
+    if (
+      looksLikeDescriptorSegment(trailingText) ||
+      firstSegment.length <= 26 ||
+      firstSegment.replace(/[\u4e00-\u9fa5]/g, '').length <= 18
+    ) {
+      return firstSegment;
+    }
+  }
+
   return segments.join(' - ') || cleanedTitle;
 }
 
@@ -166,6 +190,9 @@ function cleanFetchedBookmarkTitle(rawTitle, hostname) {
     /\s*(官方网站|官网首页|官网|首页|主页|欢迎访问)\s*$/i,
     /\s*(免费下载|最新下载|高清在线|在线观看|完整版)\s*$/i,
     /\s*(登录|注册|注册登录|账号登录|立即下载|立即体验)\s*$/i,
+    /\s*(the largest library of.*|official site|official website|home page)\s*$/i,
+    /\s*(marketplace|gallery|collection|guide|docs|documentation|catalog|directory)\s*$/i,
+    /\s*(资源库|设计资源|素材库|工具库|文档|指南|教程|合集|大全|导航)\s*$/i,
   ];
 
   noisePatterns.forEach((pattern) => {

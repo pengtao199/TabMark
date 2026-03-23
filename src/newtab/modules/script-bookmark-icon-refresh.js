@@ -4,6 +4,11 @@ const S = getScriptState();
 const ICON_OVERRIDE_KEY_PREFIX = 'bookmark-icon-override-';
 const ORIGIN_ICON_CACHE_KEY_PREFIX = 'origin-icon-cache-';
 const ORIGIN_ICON_CACHE_TTL = 1000 * 60 * 60 * 24 * 7;
+const ICON_CACHE_DB_NAME = 'tabmark-icon-cache';
+const ICON_CACHE_DB_VERSION = 1;
+const ICON_CACHE_STORE = 'origin-icons';
+let iconCacheDbPromise = null;
+const originObjectUrlCache = new Map();
 
 function buildChromeFaviconUrl(pageUrl, size = 32, bustCache = false) {
   const url = new URL(chrome.runtime.getURL('/_favicon/'));
@@ -69,6 +74,10 @@ function getCachedOriginIcon(origin) {
     return null;
   }
 
+  if (typeof cached.src === 'string' && cached.src.startsWith('blob:')) {
+    return null;
+  }
+
   if ((Date.now() - cached.timestamp) > ORIGIN_ICON_CACHE_TTL) {
     return null;
   }
@@ -91,6 +100,14 @@ function getHomepageUrl(pageUrl) {
   return new URL('/', pageUrl).toString();
 }
 
+function getOriginFromPageUrl(pageUrl) {
+  try {
+    return new URL(pageUrl).origin;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function resolveBookmarkIconSource(bookmarkId, pageUrl) {
   const override = getBookmarkIconOverride(bookmarkId);
 
@@ -100,6 +117,9 @@ function resolveBookmarkIconSource(bookmarkId, pageUrl) {
 
   try {
     const origin = new URL(pageUrl).origin;
+    if (originObjectUrlCache.has(origin)) {
+      return originObjectUrlCache.get(origin);
+    }
     const originCache = getCachedOriginIcon(origin);
     if (originCache?.src) {
       return originCache.src;
@@ -144,6 +164,121 @@ function normalizeIconUrl(href, baseUrl) {
   } catch (_error) {
     return null;
   }
+}
+
+function openIconCacheDb() {
+  if (iconCacheDbPromise) {
+    return iconCacheDbPromise;
+  }
+
+  iconCacheDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(ICON_CACHE_DB_NAME, ICON_CACHE_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(ICON_CACHE_STORE)) {
+        db.createObjectStore(ICON_CACHE_STORE, { keyPath: 'origin' });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Failed to open icon cache database'));
+  }).catch((error) => {
+    console.warn('Failed to open icon cache database:', error);
+    iconCacheDbPromise = null;
+    return null;
+  });
+
+  return iconCacheDbPromise;
+}
+
+function readOriginIconAsset(origin) {
+  if (!origin) {
+    return Promise.resolve(null);
+  }
+
+  return openIconCacheDb().then((db) => {
+    if (!db) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ICON_CACHE_STORE, 'readonly');
+      const store = transaction.objectStore(ICON_CACHE_STORE);
+      const request = store.get(origin);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Failed to read icon cache'));
+    });
+  }).catch((error) => {
+    console.warn('Failed to read cached origin icon:', origin, error);
+    return null;
+  });
+}
+
+function writeOriginIconAsset(origin, blob, metadata = {}) {
+  if (!origin || !blob) {
+    return Promise.resolve();
+  }
+
+  return openIconCacheDb().then((db) => {
+    if (!db) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ICON_CACHE_STORE, 'readwrite');
+      const store = transaction.objectStore(ICON_CACHE_STORE);
+      store.put({
+        origin,
+        blob,
+        timestamp: Date.now(),
+        contentType: metadata.contentType || blob.type || '',
+        source: metadata.source || 'remote',
+      });
+      transaction.oncomplete = () => resolve(true);
+      transaction.onerror = () => reject(transaction.error || new Error('Failed to write icon cache'));
+    });
+  }).catch((error) => {
+    console.warn('Failed to write cached origin icon:', origin, error);
+    return null;
+  });
+}
+
+function getObjectUrlForOrigin(origin, blob) {
+  if (!origin || !blob) {
+    return null;
+  }
+
+  const existing = originObjectUrlCache.get(origin);
+  if (existing) {
+    return existing;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  originObjectUrlCache.set(origin, objectUrl);
+  return objectUrl;
+}
+
+async function getCachedOriginIconDisplaySrc(origin) {
+  if (!origin) {
+    return null;
+  }
+
+  const existing = originObjectUrlCache.get(origin);
+  if (existing) {
+    return existing;
+  }
+
+  const record = await readOriginIconAsset(origin);
+  if (!record?.blob || !record?.timestamp) {
+    return null;
+  }
+
+  if ((Date.now() - record.timestamp) > ORIGIN_ICON_CACHE_TTL) {
+    return null;
+  }
+
+  return getObjectUrlForOrigin(origin, record.blob);
 }
 
 function uniqueBySrc(candidates) {
@@ -227,6 +362,20 @@ async function fetchJSON(url) {
   }
 
   return response.json();
+}
+
+async function fetchIconBlob(url) {
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'omit',
+    cache: 'no-store'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch icon blob ${url}: ${response.status}`);
+  }
+
+  return response.blob();
 }
 
 async function collectManifestIconCandidates(manifestUrl) {
@@ -318,9 +467,15 @@ async function resolveSiteIconCandidate(pageUrl) {
   const homepageUrl = getHomepageUrl(pageUrl);
   const origin = new URL(homepageUrl).origin;
   const cached = getCachedOriginIcon(origin);
+  const localDisplaySrc = await getCachedOriginIconDisplaySrc(origin);
 
-  if (cached?.src) {
-    return cached;
+  if (cached?.src || localDisplaySrc) {
+    return {
+      ...(cached || {}),
+      src: localDisplaySrc || cached?.src,
+      remoteSrc: cached?.remoteSrc || cached?.src || null,
+      source: localDisplaySrc ? 'local-cache' : (cached?.source || 'site-icon'),
+    };
   }
 
   let htmlCandidates = [];
@@ -360,7 +515,32 @@ async function resolveSiteIconCandidate(pageUrl) {
 
   const bestCandidate = pickBestIconCandidate(successfulCandidates);
   if (bestCandidate?.src) {
-    setCachedOriginIcon(origin, bestCandidate);
+    try {
+      const blob = await fetchIconBlob(bestCandidate.src);
+      await writeOriginIconAsset(origin, blob, {
+        contentType: blob.type || '',
+        source: bestCandidate.src,
+      });
+      const localSrc = getObjectUrlForOrigin(origin, blob);
+      setCachedOriginIcon(origin, {
+        ...bestCandidate,
+        src: bestCandidate.src,
+        remoteSrc: bestCandidate.src,
+        hasLocalAsset: true,
+      });
+      return {
+        ...bestCandidate,
+        src: localSrc || bestCandidate.src,
+        remoteSrc: bestCandidate.src,
+      };
+    } catch (error) {
+      console.warn('Failed to persist icon blob locally:', bestCandidate.src, error);
+      setCachedOriginIcon(origin, {
+        ...bestCandidate,
+        remoteSrc: bestCandidate.src,
+        hasLocalAsset: false,
+      });
+    }
   }
 
   return bestCandidate;
@@ -373,12 +553,35 @@ async function resolveRefreshedIconSource(bookmarkId, pageUrl) {
   }
 
   setBookmarkIconOverride(bookmarkId, {
-    src: bestCandidate.src,
+    src: bestCandidate.remoteSrc || bestCandidate.src,
     source: 'site-icon',
-    size: bestCandidate.score || 0
+    size: bestCandidate.score || 0,
+    remoteSrc: bestCandidate.remoteSrc || bestCandidate.src
   });
 
   return bestCandidate.src;
+}
+
+async function hydrateBookmarkIconFromLocalCache(img, pageUrl) {
+  if (!img || !pageUrl) {
+    return null;
+  }
+
+  const origin = getOriginFromPageUrl(pageUrl);
+  if (!origin) {
+    return null;
+  }
+
+  const localSrc = await getCachedOriginIconDisplaySrc(origin);
+  if (!localSrc) {
+    return null;
+  }
+
+  if (img.src !== localSrc) {
+    img.src = localSrc;
+  }
+
+  return localSrc;
 }
 
 async function refreshVisibleBookmarkIcons() {
@@ -414,5 +617,6 @@ async function refreshVisibleBookmarkIcons() {
 
 assignToScriptState({
   resolveBookmarkIconSource,
-  refreshVisibleBookmarkIcons
+  refreshVisibleBookmarkIcons,
+  hydrateBookmarkIconFromLocalCache
 });

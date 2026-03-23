@@ -52,6 +52,11 @@ function createFolderPreviewItem(item) {
     img.src = resolveBookmarkIconSource(item.id, item.url);
     img.alt = '';
     img.setAttribute('draggable', 'false');
+    if (typeof S.hydrateBookmarkIconFromLocalCache === 'function') {
+      Promise.resolve(S.hydrateBookmarkIconFromLocalCache(img, item.url)).catch((error) => {
+        console.warn('Failed to hydrate folder preview icon from local cache:', item.url, error);
+      });
+    }
     previewItem.appendChild(img);
     return previewItem;
   }
@@ -279,6 +284,11 @@ function createBookmarkCard(bookmark, index) {
   img.className = 'w-6 h-6 mr-2';
   img.src = resolveBookmarkIconSource(bookmark.id, bookmark.url);
   img.setAttribute('draggable', 'false');
+  if (typeof S.hydrateBookmarkIconFromLocalCache === 'function') {
+    Promise.resolve(S.hydrateBookmarkIconFromLocalCache(img, bookmark.url)).catch((error) => {
+      console.warn('Failed to hydrate bookmark icon from local cache:', bookmark.url, error);
+    });
+  }
 
   // 尝试从缓存获取颜色
   const cachedColors = localStorage.getItem(`bookmark-colors-${bookmark.id}`);

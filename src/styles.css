@@ -754,16 +754,16 @@ body.is-bookmark-dragging * {
   border-color: #404040;
 }
 [data-theme="dark"] #refresh-edit-title-button {
-  background-color: transparent;
+  background-color: #404040;
   color: #d1d5db;
-  border-color: transparent;
+  border-color: #5a5a5a;
 }
 [data-theme="dark"] #refresh-edit-title-button:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: #4b4b4b;
   color: #ffffff;
 }
 [data-theme="dark"] #refresh-edit-title-button:disabled {
-  background-color: transparent;
+  background-color: #363636;
   color: rgba(255, 255, 255, 0.55);
 }
 [data-theme="dark"] .close-button {
@@ -793,49 +793,50 @@ body.is-bookmark-dragging * {
   color: #ffffff;
 }
 
-.edit-name-input-wrap {
-  position: relative;
+.edit-name-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
 }
 
-.edit-name-input-wrap #edit-name {
-  width: 100%;
-  padding-right: 56px;
+.edit-name-input-row #edit-name {
+  flex: 1;
+  min-width: 0;
 }
 
-#refresh-edit-title-button.edit-input-icon-button {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+#refresh-edit-title-button.edit-inline-refresh-button {
+  flex: 0 0 52px;
+  width: 52px;
+  min-width: 52px;
+  height: auto;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  border: none;
-  background: transparent;
-  color: #6b7280;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #f8fafc;
+  color: #475569;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
-#refresh-edit-title-button.edit-input-icon-button .material-icons {
+#refresh-edit-title-button.edit-inline-refresh-button .material-icons {
   font-size: 20px;
 }
 
-#refresh-edit-title-button.edit-input-icon-button:hover:not(:disabled) {
-  background: rgba(15, 23, 42, 0.06);
-  color: #111827;
+#refresh-edit-title-button.edit-inline-refresh-button:hover:not(:disabled) {
+  background: #eef2f7;
+  border-color: rgba(15, 23, 42, 0.18);
+  color: #0f172a;
 }
 
-#refresh-edit-title-button.edit-input-icon-button:disabled {
+#refresh-edit-title-button.edit-inline-refresh-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-#refresh-edit-title-button.edit-input-icon-button.is-refreshing .material-icons {
+#refresh-edit-title-button.edit-inline-refresh-button.is-refreshing .material-icons {
   animation: breadcrumb-refresh-spin 0.8s linear infinite;
 }
 
